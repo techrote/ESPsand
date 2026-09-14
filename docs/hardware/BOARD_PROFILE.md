@@ -4,7 +4,7 @@ This file is the hardware source of truth for ESPsand v0.
 
 Each field is explicitly classified as:
 
-- **KNOWN** — supported directly by owner-provided identification or accepted vendor evidence;
+- **KNOWN** — supported directly by owner-provided identification or accepted vendor/physical evidence;
 - **ASSUMED** — a reasonable working value for the identified product, but not yet confirmed on the owner's exact boards;
 - **NEEDS_PHYSICAL_VALIDATION** — do not treat this as measured behaviour until evidence is captured.
 
@@ -17,7 +17,7 @@ Each field is explicitly classified as:
 | PCB revision marking | NEEDS_PHYSICAL_VALIDATION | Capture any revision/date/lot marking visible on the actual boards before assuming all revisions route identically. |
 | MCU | KNOWN | ESP32-S3; Waveshare's product page specifies ESP32-S3FH4R2 for SKU 27119. |
 | CPU/core count | KNOWN | Xtensa 32-bit LX7 dual-core, up to 240 MHz. |
-| Flash | KNOWN | 4 MB. Runtime probe should still confirm the physical units. |
+| Flash | KNOWN, vendor + physical boot evidence | 4 MB. On the first physical bring-up the ROM/runtime detected `4096k`; the original generic DevKitC profile incorrectly encoded 8 MB in the image header and caused a reboot loop before `setup()`. |
 | PSRAM | KNOWN (product specification) | Waveshare's product page specifies 2 MB PSRAM for SKU 27119. Runtime probe remains the physical-unit confirmation. |
 | SRAM / ROM | KNOWN | Vendor documentation lists 512 KB SRAM, 384 KB ROM, 16 KB RTC SRAM. |
 | Main regulator | KNOWN | ME6217C33M5G LDO; vendor identifies 800 mA maximum regulator current. This is **not** a safe continuous LED current budget. |
@@ -44,6 +44,25 @@ The supplied target image and official Waveshare material agree on the following
 - ESP32-S3 MCU;
 - RGB-matrix `Dout` pad for extending the addressable chain;
 - 17 GPIOs brought out around the board edges.
+
+## PlatformIO target profile
+
+PlatformIO's generic `esp32-s3-devkitc-1` board manifest describes an 8 MB DevKitC. ESPsand uses it only as a compiler/framework base and explicitly overrides:
+
+```ini
+board_upload.flash_size = 4MB
+```
+
+The Espressif32 PlatformIO builder uses `upload.flash_size` when generating the binary image header and when invoking `esptool`. This override is therefore a required hardware contract, not an optional upload preference. Do not remove it while the generic DevKitC board definition remains the base profile.
+
+The original 8 MB header caused this physical failure before application startup:
+
+```text
+Detected size(4096k) smaller than the size in the binary image header(8192k)
+assert failed: do_core_init startup.c:328 (flash_ret == ESP_OK)
+```
+
+The accompanying core-dump CRC warnings were emitted during the reboot loop and are treated as secondary symptoms, not evidence of damaged flash.
 
 ## Pin/profile map
 
@@ -118,7 +137,9 @@ The target board exposes labelled edge GPIOs, making the no-added-components exp
 
 ## ES-002 physical validation evidence
 
-Flash the ES-002 diagnostic runtime using `docs/DEVELOPMENT.md`. Return the following evidence before promoting remaining assumptions:
+The first physical run has already established one important fact: the board's flash is physically detected as 4 MB and the former 8 MB generic profile prevented application startup. After pulling the corrected 4 MB profile, resume the remaining validation using `docs/DEVELOPMENT.md` and `docs/hardware/BRINGUP.md`.
+
+Still capture:
 
 1. complete startup probe block;
 2. `espsand.io start ...` line, especially detected IMU address / WHO_AM_I / revision;

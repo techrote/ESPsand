@@ -12,7 +12,18 @@ Hardware ID: USB VID:PID=303A:1001 SER=F0:F5:BD:75:84:BC
 Description: USB Serial Device (COM7)
 ```
 
-However, opening the 115200-baud monitor and pressing RESET produced no ESPsand serial output, and no LEDs lit. Normal board warmth was observed. This is evidence of a bring-up defect, not evidence that GPIO14 or the IMU routing is wrong.
+However, opening the 115200-baud monitor and pressing RESET produced no ESPsand serial output, and no LEDs lit. Normal board warmth was observed.
+
+The minimal bring-up target then exposed the actual boot failure immediately:
+
+```text
+spi_flash: Detected size(4096k) smaller than the size in the binary image header(8192k). Probe failed.
+assert failed: do_core_init startup.c:328 (flash_ret == ESP_OK)
+```
+
+This establishes the root cause of the original silence: the generic PlatformIO `esp32-s3-devkitc-1` profile generated an 8 MB image header for a physical 4 MB target. The application never reached `setup()`. Repeated core-dump CRC messages observed afterward are secondary effects of the reboot loop and are not evidence that the physical flash is corrupt.
+
+`platformio.ini` now overrides `board_upload.flash_size = 4MB` for the common ESP32-S3 environment. PlatformIO's Espressif32 builder uses that manifest value both when creating the image header and when invoking `esptool`, so both the normal ES-002 firmware and `esp32s3_bringup` inherit the physical target size.
 
 ## What the minimal target removes
 
@@ -27,12 +38,15 @@ The probe uses brightness `8/255`, far below showcase levels.
 
 ## Windows / COM7 procedure
 
-From the repository root after pulling the commit containing this target:
+From the repository root after pulling the 4 MB profile fix:
 
 ```powershell
+python -m platformio run -e esp32s3_bringup -t clean
 python -m platformio run -e esp32s3_bringup -t upload --upload-port COM7
 python -m platformio device monitor -e esp32s3_bringup -p COM7 -b 115200
 ```
+
+A clean rebuild is required for this re-test so no previously generated 8 MB image survives in `.pio/build`.
 
 The environment sets `monitor_dtr = 0` and `monitor_rts = 0` so opening the monitor does not deliberately manipulate those control lines.
 
@@ -54,13 +68,14 @@ Visually, at least the first RGB-chain LED should cycle:
 red -> green -> blue -> off -> repeat
 ```
 
-## Interpretation
+## Interpretation after the 4 MB fix
 
 | Observation | Meaning |
 | --- | --- |
-| LED cycles and serial heartbeat appears | Basic boot, GPIO14, Arduino runtime and HWCDC all work; investigate ES-002 initialization/runtime specifically. |
+| LED cycles and serial heartbeat appears | Basic boot, GPIO14, Arduino runtime and HWCDC all work; return to ES-002 diagnostics. |
 | LED cycles but serial is silent | User code is executing and GPIO14 is valid; investigate USB CDC/monitor configuration. |
 | Serial heartbeat appears but LED is silent | User code and USB CDC work; investigate RGB electrical/protocol/chain assumptions. |
-| Neither LED nor serial appears | Suspect application boot/startup, board definition, reset/boot state, or USB/runtime configuration before investigating ES-002 peripherals. |
+| Neither LED nor serial appears, but no flash-size assertion is present | Investigate the next boot/runtime layer rather than the already-resolved flash-capacity mismatch. |
+| The 8192k-vs-4096k assertion still appears | The local checkout/build cache does not contain the fixed profile; clean, pull, rebuild and verify `board_upload.flash_size = 4MB`. |
 
 Do not promote any unresolved board-profile field to `KNOWN` solely because this probe compiles. Only physical observations count.
