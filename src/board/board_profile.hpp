@@ -62,12 +62,11 @@ inline constexpr bool kTouchComboConfigured = true;
 inline constexpr bool kTouchSliderConfigured = true;
 
 // Fast isolated single-channel full-height-ish excursions are preserved as an optional external
-// disturbance/noise impulse. This must enter deterministic simulation explicitly through InputFrame;
-// it is never folded into hidden model PRNG state.
+// disturbance/noise impulse. This must enter deterministic simulation explicitly through
+// InputFrame; it is never folded into hidden model PRNG state.
 inline constexpr bool kTouchNoiseConfigured = true;
-inline constexpr bool kTouchZonesConfigured =
-    kTouchLocalZonesConfigured || kTouchComboConfigured || kTouchSliderConfigured ||
-    kTouchNoiseConfigured;
+inline constexpr bool kTouchZonesConfigured = kTouchLocalZonesConfigured || kTouchComboConfigured ||
+                                              kTouchSliderConfigured || kTouchNoiseConfigured;
 
 inline constexpr std::uint8_t kQmiPreferredAddress = 0x6B;
 inline constexpr std::uint8_t kQmiAlternateAddress = 0x6A;
