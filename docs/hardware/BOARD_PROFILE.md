@@ -18,7 +18,7 @@ Each field is explicitly classified as:
 | MCU | KNOWN | ESP32-S3; Waveshare's product page specifies ESP32-S3FH4R2 for SKU 27119. |
 | CPU/core count | KNOWN | Xtensa 32-bit LX7 dual-core, up to 240 MHz. |
 | Flash | KNOWN, vendor + physical boot evidence | 4 MB. On the first physical bring-up the ROM/runtime detected `4096k`; the original generic DevKitC profile incorrectly encoded 8 MB in the image header and prevented application startup. |
-| PSRAM | KNOWN (product specification) | Waveshare's product page specifies 2 MB PSRAM for SKU 27119. Runtime capacity has not yet been directly measured. |
+| PSRAM | KNOWN, vendor + physical runtime evidence | Waveshare specifies 2 MB PSRAM and the ES-002 foundation probe measured `2095103` usable bytes on the owner's board. |
 | SRAM / ROM | KNOWN | Vendor documentation lists 512 KB SRAM, 384 KB ROM, 16 KB RTC SRAM. |
 | Main regulator | KNOWN | ME6217C33M5G LDO; vendor identifies 800 mA maximum regulator current. This is **not** a safe continuous LED current budget. |
 
@@ -72,14 +72,14 @@ After the full FH4R2 profile correction, the minimal bring-up firmware boots and
 | Signal | Status | Current value / evidence |
 | --- | --- | --- |
 | RGB matrix data | KNOWN, vendor + physical | GPIO14. Waveshare's official Arduino example defines `PIN_NEOPIXEL 14`, and the minimal physical bring-up successfully drives the onboard RGB chain through GPIO14. |
-| QMI8658 SDA | ASSUMED | GPIO11; supported by public board-specific examples/community pinouts, pending physical confirmation. |
-| QMI8658 SCL | ASSUMED | GPIO12; same evidence boundary as SDA. |
+| QMI8658 SDA | KNOWN, physical | GPIO11. ES-002 communicates successfully with the onboard QMI8658 using this SDA routing. |
+| QMI8658 SCL | KNOWN, physical | GPIO12. ES-002 communicates successfully with the onboard QMI8658 using this SCL routing. |
 | QMI8658 INT1 | ASSUMED | GPIO10. ES-002 does not require interrupts. |
 | QMI8658 INT2 | ASSUMED | GPIO13. ES-002 does not require interrupts. |
-| BOOT button | ASSUMED | GPIO0. Strong ESP32-S3/Waveshare-family expectation; physical confirmation remains pending. |
-| BOOT active level | ASSUMED | active-low with internal pull-up. |
+| BOOT button | KNOWN, physical | GPIO0. ES-002's configured GPIO0 input produced both short and long BOOT events on the owner's board. |
+| BOOT active level | KNOWN, physical | active-low with internal pull-up; confirmed by successful ES-002 button events through the configured path. |
 | Native USB D- / D+ | ASSUMED | GPIO19 / GPIO20; never repurpose while USB is required. |
-| USB serial/JTAG device | KNOWN, physical | Windows enumerates the board as `USB VID:PID=303A:1001` and the corrected minimal firmware emits continuous serial heartbeats after host re-enumeration/reconnect. |
+| USB serial/JTAG device | KNOWN, physical | Windows enumerates the board as `USB VID:PID=303A:1001` and the corrected firmware emits continuous serial telemetry after host re-enumeration/reconnect. |
 
 Secondary routing reference:
 `https://devices.esphome.io/devices/waveshare-esp32s3-matrix/`
@@ -97,7 +97,7 @@ Waveshare publishes schematic/example resources from:
 | Exact LED silicon | NEEDS_PHYSICAL_VALIDATION | Not required by ES-002 if the NeoPixel-compatible timing is correct. |
 | Data GPIO | KNOWN, physical | GPIO14. Minimal `neopixelWrite()` bring-up visibly cycles the onboard RGB chain. |
 | Pixel ordering | NEEDS_PHYSICAL_VALIDATION | ES-002 starts with linear row-major interpretation and provides a one-pixel sweep specifically to measure actual order. |
-| RGB/GRB byte order | NEEDS_PHYSICAL_VALIDATION | ES-002 starts with `NEO_GRB`; the primary-colour diagnostic is the acceptance test. The minimal vendor helper confirms RGB-chain operation, not the ES-002 adapter byte order. |
+| RGB/GRB byte order | KNOWN, physical | RGB. With the original `NEO_GRB` adapter, requested `red -> green -> blue` appeared `green -> red -> blue`, and requested amber appeared lime. The adapter now uses `NEO_RGB`. |
 | Development brightness ceiling | ASSUMED policy | ES-002 clamps all output to 32/255 or less and uses 16/255 for full-panel primary-colour frames. This is intentionally conservative, not a certified safe limit. |
 | Practical sustained ceiling | NEEDS_PHYSICAL_VALIDATION | Vendor warns that excessive brightness can rapidly heat/damage the board. Establish later with measured soak evidence. |
 
@@ -108,28 +108,36 @@ The nominal 800 mA LDO rating must not be treated as an LED current budget.
 | Field | Status | Current value / evidence |
 | --- | --- | --- |
 | Device family | KNOWN | QMI8658/QMI8658C-family QST six-axis accelerometer + gyroscope. |
-| SDA/SCL | ASSUMED | GPIO11 / GPIO12. |
-| I2C address | NEEDS_PHYSICAL_VALIDATION | ES-002 probes `0x6B` first and `0x6A` second, then reports the detected address. |
-| Expected WHO_AM_I | ASSUMED from QMI8658 driver/spec lineage | `0x05`; ES-002 refuses to initialize a candidate address unless this value is read. |
+| SDA/SCL | KNOWN, physical | GPIO11 / GPIO12. ES-002 successfully initializes and continuously polls the onboard sensor on these pins. |
+| I2C address | KNOWN, physical | `0x6B`. ES-002 repeatedly detected the sensor there. |
+| WHO_AM_I | KNOWN, physical | `0x05`. ES-002 validated this value before accepting the device. |
+| Revision register | KNOWN, physical | `0x7C` on the tested unit. |
 | INT1 / INT2 | ASSUMED | GPIO10 / GPIO13; unused by ES-002. |
-| Configuration used by ES-002 | IMPLEMENTED, awaiting physical validation | +/-8 g accelerometer and +/-512 dps gyro at 1 kHz sensor ODR with LPFs enabled; firmware polls at 200 Hz. |
-| Matrix-relative axis orientation | NEEDS_PHYSICAL_VALIDATION | ES-002 uses an explicit provisional identity XY transform and exposes raw/scaled values over serial. |
-| Stable sample rate | NEEDS_PHYSICAL_VALIDATION | Runtime telemetry reports measured successful poll rate; target is approximately 200 Hz. |
+| Configuration used by ES-002 | IMPLEMENTED + physically exercised | +/-8 g accelerometer and +/-512 dps gyro at 1 kHz sensor ODR with LPFs enabled; firmware nominally polls at 200 Hz. |
+| Stable sample rate | KNOWN for current runtime | Approximately 180 Hz successful polling in the captured run, with zero read failures. |
+| Matrix-relative in-plane orientation | KNOWN, physical visual calibration | Current screen-space transform is `matrix_x=-imu_y`, `matrix_y=+imu_x`, correcting the observed 90-degree rotation so visible gravity points downward on the matrix. |
+| Full 3D board-centric orientation | NEEDS_PHYSICAL_VALIDATION | Complete six-pose mapping into USB/SIDE/FACE axes and exact Z/sign conventions remain to be measured. |
 
-The minimal ES-002 driver intentionally avoids a large sensor dependency: it probes WHO_AM_I, configures the small register subset needed for raw accel/gyro, and exposes both signed raw counts and scaled `g` / `dps` values.
+For human-facing terminology, future calibration and scene code should use board-centric axes rather than raw sensor names:
+
+- **USB axis** — in the PCB plane along the USB-C cable/connector direction;
+- **SIDE axis** — in the PCB plane perpendicular to USB, across the matrix left/right;
+- **FACE axis** — normal to the PCB/LED face.
+
+Raw QMI8658 X/Y/Z remain available internally. See `docs/hardware/CALIBRATION_2026-09-14.md` for the physical observations that established the current colour order and in-plane transform.
 
 ## BOOT and RESET buttons
 
 The product has both BOOT and RESET buttons. Waveshare documents BOOT as the download-mode button used while resetting.
 
-ES-002 treats BOOT as GPIO0 active-low **provisionally** and implements a pure, host-tested debounce/gesture state machine:
+ES-002 uses BOOT as GPIO0 active-low and implements a pure, host-tested debounce/gesture state machine:
 
 - <=600 ms stable press: short/reset event;
 - >=800 ms stable press: long/next-diagnostic event emitted once while held;
 - the 600–800 ms ambiguity band emits neither event;
 - long release never emits an additional short event.
 
-Physical confirmation of GPIO0/active-low remains required before those fields become `KNOWN`.
+The physical run produced both short and long BOOT events through this GPIO0 active-low path, so the GPIO and active level are now treated as known for the tested board.
 
 ## Touch-capable candidates
 
@@ -137,29 +145,31 @@ The ESP32-S3 exposes native touch channels on GPIO1–GPIO14. Silicon capability
 
 Current status: **NEEDS_PHYSICAL_VALIDATION**.
 
-The target board exposes labelled edge GPIOs, making the no-added-components experiment plausible. If the current routing assumptions are correct, GPIO10–GPIO14 are consumed by QMI8658/matrix functions and must not be repurposed. GPIO1–GPIO9 remain candidate touch channels until ES-003 reconciles schematic routing and measures them.
+The target board exposes labelled edge GPIOs, making the no-added-components experiment plausible. GPIO10–GPIO14 are consumed by QMI8658/matrix functions and must not be repurposed. GPIO1–GPIO9 remain candidate touch channels until ES-003 reconciles schematic routing and measures them.
 
 ## ES-002 physical validation evidence
 
 The physical bring-up has now established:
 
-- the actual board contains 4 MB flash;
-- the corrected FH4R2 memory profile boots successfully;
+- actual 4 MB flash and approximately 2 MB PSRAM;
+- corrected FH4R2 memory profile boots successfully;
 - Arduino user code executes continuously;
 - GPIO14 drives the onboard NeoPixel-compatible RGB chain;
-- USB serial/JTAG telemetry works after Windows completes USB re-enumeration/reconnect.
+- logical LED byte order is RGB, not GRB;
+- USB serial/JTAG telemetry works after Windows completes USB re-enumeration/reconnect;
+- QMI8658 responds on GPIO11/GPIO12 at `0x6B` with WHO_AM_I `0x05` and revision `0x7C`;
+- current runtime sustains approximately 180 Hz IMU polling with zero captured read failures;
+- BOOT GPIO0 active-low path produces both short and long events;
+- visible gravity requires the in-plane projection `x=-raw_y`, `y=+raw_x`.
 
 The PlatformIO monitor may briefly report `ClearCommError` / `PermissionError(13)` while the device re-enumerates, then reconnect to the same COM port. A reconnect followed by steady heartbeat is not a firmware failure.
 
-Still capture with the normal ES-002 diagnostic runtime:
+Still capture:
 
-1. complete startup probe block;
-2. `espsand.io start ...` line, especially detected IMU address / WHO_AM_I / revision;
-3. pixel-sweep observation: physical order of indices 0..63;
-4. primary-colour observation: whether requested red, green, blue appear correctly;
-5. raw/scaled IMU telemetry with the board held in at least face-up, face-down, left-edge-down, right-edge-down, USB-edge-down and opposite-edge-down orientations;
-6. BOOT short/long behaviour;
-7. reported IMU successful poll rate and any failure count;
-8. any visible PCB revision/date/lot marking.
+1. physical pixel traversal/order of indices 0..63;
+2. six controlled static poses to map raw X/Y/Z into USB/SIDE/FACE and confirm all signs;
+3. any visible PCB revision/date/lot marking;
+4. sustained thermal/current evidence for practical LED brightness ceilings;
+5. whether the single observed TG0 watchdog reset recurs under normal operation.
 
 Do not infer a sustained safe LED brightness from a short diagnostic run.
