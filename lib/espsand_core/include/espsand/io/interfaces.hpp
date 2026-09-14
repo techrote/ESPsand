@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "touch_types.hpp"
 #include "types.hpp"
 
 namespace espsand::io {
@@ -23,6 +24,15 @@ class IButton {
 public:
   virtual ~IButton() = default;
   virtual ButtonEvent poll(std::uint64_t now_us) = 0;
+};
+
+class ITouchZones {
+public:
+  virtual ~ITouchZones() = default;
+  // Returns true only when a complete new touch scan has been processed.
+  virtual bool poll(std::uint64_t now_us, TouchFrame& frame) = 0;
+  virtual TouchStatus status() const = 0;
+  virtual TouchDiagnostics diagnostics() const = 0;
 };
 
 class IMatrixOutput {
