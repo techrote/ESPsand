@@ -8,7 +8,9 @@ espsand::app::DiagnosticRuntime runtime;
 
 } // namespace
 
-void setup() { runtime.begin(); }
+void setup() {
+  runtime.begin();
+}
 
 void loop() {
   runtime.tick();

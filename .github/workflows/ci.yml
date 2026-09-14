@@ -28,8 +28,5 @@ jobs:
       - name: Install pinned development tools
         run: python -m pip install -r requirements-dev.txt
 
-      - name: Show clang-format patch
-        run: |
-          python tools/format.py --write
-          git diff -- src lib test
-          exit 1
+      - name: Run reproducible verification
+        run: python tools/ci.py

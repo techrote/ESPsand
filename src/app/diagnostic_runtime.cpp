@@ -122,8 +122,7 @@ void DiagnosticRuntime::render(std::uint64_t now_us) {
   matrix_.present(frame, requested_brightness);
 }
 
-void DiagnosticRuntime::render_pixel_sweep(io::Frame8x8& frame,
-                                           std::uint32_t elapsed_ms) const {
+void DiagnosticRuntime::render_pixel_sweep(io::Frame8x8& frame, std::uint32_t elapsed_ms) const {
   const std::size_t index = (elapsed_ms / 100U) % io::kMatrixPixels;
   frame[index] = {255, 96, 0};
 }
@@ -157,8 +156,7 @@ void DiagnosticRuntime::render_gravity(io::Frame8x8& frame) const {
   frame[pixel_index(3, 3)] = {0, 10, 10};
 }
 
-void DiagnosticRuntime::overlay_fault(io::Frame8x8& frame,
-                                      std::uint32_t elapsed_ms) const {
+void DiagnosticRuntime::overlay_fault(io::Frame8x8& frame, std::uint32_t elapsed_ms) const {
   const auto status = imu_.status();
   if (status.healthy || ((elapsed_ms / 250U) % 2U) == 0U) {
     return;
@@ -179,22 +177,20 @@ void DiagnosticRuntime::emit_button_event(io::ButtonEvent event) {
 void DiagnosticRuntime::emit_telemetry(std::uint64_t now_us) {
   const auto status = imu_.status();
   const std::uint64_t window_us = now_us - telemetry_window_start_us_;
-  const float imu_rate_hz = window_us == 0
-                                ? 0.0F
-                                : static_cast<float>(imu_samples_window_) * 1000000.0F /
-                                      static_cast<float>(window_us);
+  const float imu_rate_hz = window_us == 0 ? 0.0F
+                                           : static_cast<float>(imu_samples_window_) * 1000000.0F /
+                                                 static_cast<float>(window_us);
 
   char line[320];
   std::snprintf(
       line, sizeof(line),
       "runtime mode=%s imu_ok=%u imu_addr=0x%02X imu_rate_hz=%.1f failures=%lu "
       "acc_g=(%+.3f,%+.3f,%+.3f) gyro_dps=(%+.2f,%+.2f,%+.2f) max_loop_us=%llu",
-      runtime::diagnostic_mode_name(controller_.mode()), status.healthy ? 1U : 0U,
-      status.address, static_cast<double>(imu_rate_hz),
-      static_cast<unsigned long>(status.failure_count), static_cast<double>(latest_imu_.accel_g.x),
-      static_cast<double>(latest_imu_.accel_g.y), static_cast<double>(latest_imu_.accel_g.z),
-      static_cast<double>(latest_imu_.gyro_dps.x), static_cast<double>(latest_imu_.gyro_dps.y),
-      static_cast<double>(latest_imu_.gyro_dps.z),
+      runtime::diagnostic_mode_name(controller_.mode()), status.healthy ? 1U : 0U, status.address,
+      static_cast<double>(imu_rate_hz), static_cast<unsigned long>(status.failure_count),
+      static_cast<double>(latest_imu_.accel_g.x), static_cast<double>(latest_imu_.accel_g.y),
+      static_cast<double>(latest_imu_.accel_g.z), static_cast<double>(latest_imu_.gyro_dps.x),
+      static_cast<double>(latest_imu_.gyro_dps.y), static_cast<double>(latest_imu_.gyro_dps.z),
       static_cast<unsigned long long>(max_loop_us_));
   diagnostics_.write_line(line);
 

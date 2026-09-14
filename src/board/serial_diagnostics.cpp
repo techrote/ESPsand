@@ -4,8 +4,12 @@
 
 namespace espsand::board {
 
-void SerialDiagnostics::begin(std::uint32_t baud) { Serial.begin(baud); }
+void SerialDiagnostics::begin(std::uint32_t baud) {
+  Serial.begin(baud);
+}
 
-void SerialDiagnostics::write_line(const char* line) { Serial.println(line); }
+void SerialDiagnostics::write_line(const char* line) {
+  Serial.println(line);
+}
 
 } // namespace espsand::board

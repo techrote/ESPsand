@@ -92,7 +92,9 @@ void test_diagnostic_controller_reset_and_next_mode() {
 
 class FakeClock final : public espsand::io::IClock {
 public:
-  std::uint64_t now_us() const override { return now_us_; }
+  std::uint64_t now_us() const override {
+    return now_us_;
+  }
   std::uint64_t now_us_ = 1234;
 };
 
@@ -103,7 +105,9 @@ public:
     return sample.valid;
   }
 
-  espsand::io::ImuStatus status() const override { return status_; }
+  espsand::io::ImuStatus status() const override {
+    return status_;
+  }
 
   espsand::io::ImuSample sample_{};
   espsand::io::ImuStatus status_{};
@@ -116,7 +120,9 @@ public:
     brightness_ = requested_brightness;
   }
 
-  std::uint8_t brightness_ceiling() const override { return 32; }
+  std::uint8_t brightness_ceiling() const override {
+    return 32;
+  }
 
   espsand::io::Frame8x8 frame_{};
   std::uint8_t brightness_ = 0;

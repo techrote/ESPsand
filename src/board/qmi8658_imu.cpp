@@ -92,7 +92,9 @@ bool Qmi8658Imu::poll(io::ImuSample& sample) {
   return true;
 }
 
-io::ImuStatus Qmi8658Imu::status() const { return status_; }
+io::ImuStatus Qmi8658Imu::status() const {
+  return status_;
+}
 
 bool Qmi8658Imu::probe(std::uint8_t address) {
   status_.address = address;
@@ -130,7 +132,8 @@ bool Qmi8658Imu::read_block(std::uint8_t reg, std::uint8_t* data, std::size_t le
   }
 
   const auto requested = static_cast<std::uint8_t>(length);
-  const auto received = wire_.requestFrom(status_.address, requested, static_cast<std::uint8_t>(true));
+  const auto received =
+      wire_.requestFrom(status_.address, requested, static_cast<std::uint8_t>(true));
   if (received != requested) {
     while (wire_.available()) {
       wire_.read();
@@ -156,8 +159,8 @@ bool Qmi8658Imu::write_register(std::uint8_t reg, std::uint8_t value) {
 }
 
 std::int16_t Qmi8658Imu::decode_le_i16(const std::uint8_t* data) {
-  const auto value = static_cast<std::uint16_t>(data[0]) |
-                     (static_cast<std::uint16_t>(data[1]) << 8U);
+  const auto value =
+      static_cast<std::uint16_t>(data[0]) | (static_cast<std::uint16_t>(data[1]) << 8U);
   return static_cast<std::int16_t>(value);
 }
 

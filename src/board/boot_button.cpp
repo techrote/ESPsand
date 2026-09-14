@@ -20,6 +20,8 @@ io::ButtonEvent BootButton::poll(std::uint64_t now_us) {
   return gesture_.update(read_pressed(), now_ms);
 }
 
-bool BootButton::read_pressed() const { return digitalRead(kBootButton.gpio) == LOW; }
+bool BootButton::read_pressed() const {
+  return digitalRead(kBootButton.gpio) == LOW;
+}
 
 } // namespace espsand::board

@@ -25,8 +25,7 @@ io::ButtonEvent ButtonGesture::update(bool raw_pressed, std::uint32_t now_ms) {
   }
 
   io::ButtonEvent event = io::ButtonEvent::kNone;
-  if (raw_pressed_ != stable_pressed_ &&
-      elapsed(now_ms, raw_changed_ms_) >= config_.debounce_ms) {
+  if (raw_pressed_ != stable_pressed_ && elapsed(now_ms, raw_changed_ms_) >= config_.debounce_ms) {
     stable_pressed_ = raw_pressed_;
     if (stable_pressed_) {
       pressed_since_ms_ = now_ms;
@@ -48,7 +47,9 @@ io::ButtonEvent ButtonGesture::update(bool raw_pressed, std::uint32_t now_ms) {
   return event;
 }
 
-bool ButtonGesture::stable_pressed() const { return stable_pressed_; }
+bool ButtonGesture::stable_pressed() const {
+  return stable_pressed_;
+}
 
 std::uint32_t ButtonGesture::elapsed(std::uint32_t now, std::uint32_t then) {
   return now - then;

@@ -7,8 +7,7 @@
 
 namespace espsand::board {
 
-MatrixOutput::MatrixOutput()
-    : strip_(io::kMatrixPixels, kMatrixData.gpio, NEO_GRB + NEO_KHZ800) {}
+MatrixOutput::MatrixOutput() : strip_(io::kMatrixPixels, kMatrixData.gpio, NEO_GRB + NEO_KHZ800) {}
 
 void MatrixOutput::begin() {
   strip_.begin();
@@ -27,6 +26,8 @@ void MatrixOutput::present(const io::Frame8x8& frame, std::uint8_t requested_bri
   strip_.show();
 }
 
-std::uint8_t MatrixOutput::brightness_ceiling() const { return kInitialBrightnessCeiling; }
+std::uint8_t MatrixOutput::brightness_ceiling() const {
+  return kInitialBrightnessCeiling;
+}
 
 } // namespace espsand::board
