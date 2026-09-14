@@ -70,7 +70,7 @@ void print_foundation_probe() {
   Serial.println("profile.imu_axis_orientation=CALIBRATED_IN_PLANE x=-raw_y y=+raw_x");
   Serial.println("profile.boot_active_level=KNOWN low");
   Serial.println("profile.touch_candidates=KNOWN gpio=1,2,3,4,5,6,7");
-  Serial.println("profile.touch_zones=NEEDS_PHYSICAL_VALIDATION");
+  Serial.println("profile.touch_zones=KNOWN combo_only_common_mode local_ab=disabled");
   Serial.println("profile.brightness_ceiling=NEEDS_PHYSICAL_VALIDATION");
   Serial.println("espsand.probe end");
 }

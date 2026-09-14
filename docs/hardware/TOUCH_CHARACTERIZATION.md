@@ -1,10 +1,10 @@
 # ES-003 no-component capacitive characterization
 
-This document defines the physical gate for ES-003. The firmware and normalization logic are automated and host-tested; actual sensitivity and false-positive behaviour can only be judged on the owner's Waveshare ESP32-S3-Matrix.
+This document records the ES-003 bare-board capacitive experiment on the owner's Waveshare ESP32-S3-Matrix. The firmware and normalization logic are automated and host-tested; the sensitivity conclusions below come from direct physical use of the target board.
 
 ## Hardware truth and candidates
 
-Waveshare's official schematic for the ESP32-S3-Matrix routes GPIO1 through GPIO7 directly to the exposed expansion header. All seven are native ESP32-S3 touch-capable GPIOs and none is assigned to the onboard matrix, IMU, BOOT button or native USB path.
+Waveshare's official schematic routes GPIO1 through GPIO7 directly to the exposed expansion header. All seven are native ESP32-S3 touch-capable GPIOs and none is assigned to the onboard matrix, IMU, BOOT button or native USB path.
 
 Official schematic:
 `https://files.waveshare.com/wiki/ESP32-S3-Matrix/ESP32-S3-Matrix-Sch.pdf`
@@ -15,9 +15,7 @@ The characterization set is therefore exactly:
 GPIO1 GPIO2 GPIO3 GPIO4 GPIO5 GPIO6 GPIO7
 ```
 
-GPIO8 and GPIO9 are touch-capable in the ESP32-S3 silicon but are not exposed on this board's edge header, so they are not useful no-component electrodes here. GPIO10 through GPIO14 are excluded because the board uses them for the QMI8658 and RGB matrix. GPIO19/GPIO20 are native USB and are excluded.
-
-Routing/capability is known. **Useful capacitive sensitivity is not yet known.** Do not promote a channel or virtual zone to product input from the schematic alone.
+GPIO8 and GPIO9 are touch-capable in the ESP32-S3 silicon but are not exposed on this board's edge header. GPIO10 through GPIO14 are excluded because the board uses them for the QMI8658 and RGB matrix. GPIO19/GPIO20 are native USB and are excluded.
 
 ## Firmware behaviour
 
@@ -33,19 +31,41 @@ The pure normalization layer maintains, per channel:
 - common-mode-corrected disturbance `z`;
 - hysteretic active state.
 
-Baseline tracking is fast only during initial warmup, slow while idle, and nearly frozen during a strong disturbance. Equal changes across all channels are removed from each channel's local `z` score and retained separately as a common-mode value. Event gates add hysteresis and cooldown.
+Baseline tracking is fast only during initial warmup, slow while idle, and nearly frozen during a strong disturbance. Equal changes across all channels are removed from each local `z` score and retained separately as a common-mode value. Event gates add hysteresis and cooldown.
 
-Two virtual groupings exist only to accelerate characterization:
+Two three-pin virtual groups remain available for diagnostics:
 
 - provisional A: GPIO5, GPIO6, GPIO7;
-- centre probe: GPIO4, not assigned to either group;
+- centre probe: GPIO4;
 - provisional B: GPIO1, GPIO2, GPIO3.
 
-These groupings are **not enabled as scene controls**. `TouchFrame.available` remains false until physical evidence demonstrates a useful mapping. The `NullTouchZones` adapter provides the permanent clean unavailable/disabled path.
+They are **not product A/B controls** on the tested bare board. Physical characterization showed that a fingertip spans most or all of the exposed GPIO1..7 edge, so individual-pad or two-zone semantics would imply precision the hardware does not reliably provide.
+
+## Physical result
+
+With the touch-characterization page active, the owner physically observed:
+
+- swiping a fingertip along the GPIO1..7 edge moves the local-response amber/yellow indication smoothly from left to right;
+- an ordinary fingertip is wide enough to influence most or all of the numbered edge at once, so reliably isolating an individual pad is impractical;
+- the strongest and most repeatable response occurs when **pinching along the PCB edge** rather than attempting point contact on one numbered pad;
+- the purple common-mode bar is strong during that edge pinch and visibly tracks the amount of fingertip area coupled to the PCB;
+- local common-mode-rejected channels occasionally flash amber spuriously, so their apparent position is useful diagnostically but is not reliable enough to expose as scene-changing A/B input.
+
+This is a successful **combo-only/common-mode** outcome. The bare board provides a useful broad deliberate-contact gesture, but not trustworthy separate A/B buttons.
+
+The product mapping is therefore:
+
+- `cap_a = 0`, `event_a = false` on this board profile;
+- `cap_b = 0`, `event_b = false` on this board profile;
+- `cap_combo` is the bounded common-mode edge-contact intensity;
+- `event_combo` is the hysteretic/cooldown-gated deliberate edge-contact event;
+- local per-channel values remain available in diagnostics for research and possible future coated-board recalibration.
+
+Importantly, `cap_combo` is driven from common mode only. Occasional local amber false activity cannot directly become a product capacitive event.
 
 ## Diagnostic page
 
-The normal firmware now cycles through four diagnostic pages:
+The normal firmware cycles through four diagnostic pages:
 
 1. pixel sweep;
 2. primary colours;
@@ -54,59 +74,46 @@ The normal firmware now cycles through four diagnostic pages:
 
 Long-press BOOT three times from the initial pixel-sweep page to reach touch characterization.
 
-On the matrix, columns 0 through 6 correspond to GPIO1 through GPIO7. A cyan bar grows upward with positive common-mode-corrected disturbance and turns amber when the provisional channel threshold is active. Column 7 is the positive common-mode disturbance in purple. During initial warmup the seven channels show only dim bottom markers.
+On the matrix, columns 0 through 6 correspond to GPIO1 through GPIO7. A cyan bar grows upward with positive common-mode-corrected disturbance and turns amber when the provisional local-channel threshold is active. Column 7 is the positive common-mode disturbance in purple. During initial warmup the seven channels show only dim bottom markers.
 
-While the touch page is active, serial emits approximately 10 lines/s. Example shape:
+While the touch page is active, serial emits approximately 10 lines/s. After this physical decision, `zones=1` means a supported capacitive semantic input exists; it does **not** mean two local zones exist. The supported semantic is combo/common-mode only.
+
+Example shape:
 
 ```text
-touch t_ms=... hw=1 ready=1 zones=0 scans=... cm=... pa=.../0 pb=.../0 pc=.../0 ch1:r... b... d... n... zr... z... a0 ... ch7:...
+touch t_ms=... hw=1 ready=1 zones=1 scans=... cm=... pa=... pb=... pc=... ch1:... ch7:...
 ```
 
 Fields:
 
 - `hw`: touch hardware/candidate validation succeeded;
 - `ready`: adaptive warmup has completed;
-- `zones`: product semantic zones enabled; expected to remain `0` during characterization;
+- `zones`: at least one product capacitive semantic is enabled;
 - `scans`: processed complete seven-channel scans;
 - `cm`: normalized common-mode disturbance before local cancellation;
-- `pa`, `pb`, `pc`: provisional A/B/combo intensities and active state;
+- `pa`, `pb`: diagnostic-only provisional local-group intensities;
+- `pc`: combo/common-mode intensity and active state;
 - `r`: raw reading;
 - `b`: adaptive baseline;
 - `d`: raw minus baseline;
 - `n`: adaptive noise magnitude;
 - `zr`: raw normalized disturbance;
-- `z`: common-mode-corrected normalized disturbance;
-- `a`: per-channel provisional active state.
+- `z`: common-mode-corrected local disturbance;
+- `a`: per-channel diagnostic active state.
 
-## Exact bare-board test procedure
+## Final ES-003 decision
 
-No foil, wire, resistor, external touch IC or added electrode is permitted for this issue. Use only a finger near or on the exposed numbered GPIO pads. Avoid the 5 V, 3V3 and GND pads during this test.
+The tested board satisfies ES-003 as **combo-only/common-mode useful**:
 
-1. Start with the board untouched and dangling or resting in a repeatable nonconductive position. Power it from USB and allow at least 3 seconds for startup/warmup.
-2. Enter the touch-characterization page with long BOOT presses. Confirm serial reports `hw=1`, `ready=1`, `zones=0`.
-3. **Idle capture:** keep hands at least roughly 10 cm from the GPIO edge for 10 seconds. Save the serial output. This establishes idle noise and drift.
-4. **Individual direct-touch pass:** for GPIO1 through GPIO7 in order, touch only that numbered exposed pad for about 2 seconds, release for about 2 seconds, then move to the next pad. Do not intentionally touch neighbouring pads at the same time.
-5. **Individual proximity pass:** repeat GPIO1 through GPIO7 without contact, bringing one fingertip approximately 1-5 mm from each pad for about 2 seconds. Exact distance is not critical; note whether any response is visibly/serially obvious before contact.
-6. **Broad-zone pass:** bring a finger or thumb broadly near GPIO1-3 together, then GPIO5-7 together, each for about 2 seconds with 2 seconds release. This tests whether the physical edge can behave as two coarse regions despite having no added electrode.
-7. **Combo/common-mode pass:** disturb both ends of the GPIO1-7 edge together, for example two fingers near the GPIO1-3 and GPIO5-7 regions simultaneously. Record whether `cm`/`pc` separates this from a local disturbance.
-8. **False-positive pass:** leave the GPIO edge untouched while tilting, rotating and gently shaking the board for about 10 seconds. Then handle the USB connector/cable normally for another 10 seconds. Capacitive sensing must not become a scene-changing control due to ordinary motion or USB handling.
-9. Return to idle for 10 seconds and confirm baselines recover instead of remaining latched.
+- no extra electrode or component is required;
+- a deliberate edge pinch gives a strong, smooth response;
+- response magnitude carries useful broad contact-area/coupling information;
+- local channel position is visually interesting but too coarse/noisy to promise individual-pad or two-zone operation;
+- false local amber activity is isolated from the product combo event path;
+- BOOT + IMU remain fully sufficient when capacitive input is ignored.
 
-For the quickest useful review, paste the serial sections for: idle, one strong low-numbered channel event, one strong high-numbered channel event, broad A, broad B, combo, and motion-without-touch. A full capture is also acceptable.
-
-## Physical decision criteria
-
-ES-003 does not require touchscreen-grade behaviour. A channel/group is useful when repeated deliberate disturbance is comfortably larger than its idle variation and ordinary board handling does not trigger it continuously.
-
-Possible successful conclusions are:
-
-- **two zones viable:** two spatially distinct broad disturbances can be separated with tolerable false positives;
-- **one zone viable:** only a generic broad capacitive disturbance is robust; expose one semantic intensity rather than pretending there are two;
-- **combo-only/common-mode useful:** local discrimination is poor but a deliberate large hand-near-board event is distinctive enough for a bounded special-event input;
-- **not viable bare-board:** deliberate response is not reliably separable from noise/handling. Keep `ITouchZones` unavailable and continue ESPsand using BOOT + IMU.
-
-Any of these outcomes satisfies the experimental intent if it is supported by captured evidence. No scene may depend on capacitive success.
+This is intentionally not described as pressure sensing. Coupling depends on contact area, grip, moisture, grounding and other environmental factors as well as force.
 
 ## Coating note
 
-Future conformal coating changes electrode-to-finger geometry and dielectric properties. The adaptive baseline avoids factory absolute thresholds, but coating still requires repeating physical characterization and may change which virtual grouping is useful.
+Future conformal coating changes electrode-to-finger geometry and dielectric properties. The adaptive baseline avoids factory absolute thresholds, but coating still requires repeating physical characterization. A coated board may make local-zone discrimination better or worse, so the current combo-only decision applies to the tested bare-board geometry.

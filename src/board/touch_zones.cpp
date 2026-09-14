@@ -96,11 +96,13 @@ void TouchZones::update_provisional_groups(io::TouchFrame& frame, std::uint64_t 
   const float a_z = group_max(kProvisionalTouchZoneA);
   const float b_z = group_max(kProvisionalTouchZoneB);
   const float common_z = std::max(0.0F, diagnostics_.common_mode_z);
-  const float combo_z = std::max(common_z, std::min(a_z, b_z));
 
   const auto a = zone_a_gate_.update(a_z);
   const auto b = zone_b_gate_.update(b_z);
-  const auto combo = combo_gate_.update(combo_z);
+  // Physical ES-003 evidence found occasional local-channel false activity but a strong, smooth
+  // edge-pinch response in the common-mode channel. Keep combo semantics strictly common-mode so
+  // local amber flashes cannot become product events.
+  const auto combo = combo_gate_.update(common_z);
 
   diagnostics_.provisional_a = a.intensity;
   diagnostics_.provisional_b = b.intensity;
@@ -109,20 +111,22 @@ void TouchZones::update_provisional_groups(io::TouchFrame& frame, std::uint64_t 
   diagnostics_.provisional_b_active = b.active;
   diagnostics_.provisional_combo_active = combo.active;
 
-  // Do not expose the provisional grouping as a product control until physical sensitivity and
-  // false-positive behaviour have been measured. Flipping kTouchZonesConfigured after evidence is
-  // enough to activate the already-tested semantic contract.
   frame.available = status_.zones_configured;
   if (!frame.available) {
     return;
   }
 
-  frame.cap_a = a.intensity;
-  frame.cap_b = b.intensity;
-  frame.cap_combo = combo.intensity;
-  frame.event_a = a.triggered;
-  frame.event_b = b.triggered;
-  frame.event_combo = combo.triggered;
+  if (kTouchLocalZonesConfigured) {
+    frame.cap_a = a.intensity;
+    frame.cap_b = b.intensity;
+    frame.event_a = a.triggered;
+    frame.event_b = b.triggered;
+  }
+
+  if (kTouchComboConfigured) {
+    frame.cap_combo = combo.intensity;
+    frame.event_combo = combo.triggered;
+  }
 }
 
 } // namespace espsand::board
