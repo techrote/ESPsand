@@ -16,7 +16,7 @@ struct TouchNormalizerConfig {
   float noise_alpha_active = 0.002F;
   float noise_floor = 4.0F;
   float baseline_hold_z = 3.0F;
-  float common_mode_gain = 0.75F;
+  float common_mode_gain = 1.0F;
   float channel_enter_z = 5.0F;
   float channel_exit_z = 2.5F;
   std::uint16_t warmup_samples = 32;
