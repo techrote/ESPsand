@@ -172,26 +172,29 @@ void test_touch_normalizer_rejects_equal_common_mode_shift() {
 
 void test_touch_gate_hysteresis_and_cooldown_bound_events() {
   espsand::input::TouchGateConfig config{};
-  config.cooldown_samples = 3;
+  config.cooldown_samples = 4;
   espsand::input::TouchZoneGate gate(config);
 
   auto state = gate.update(6.0F);
   TEST_ASSERT_TRUE(state.active);
   TEST_ASSERT_TRUE(state.triggered);
 
+  state = gate.update(4.0F);
+  TEST_ASSERT_TRUE(state.active);
+  TEST_ASSERT_FALSE(state.triggered);
+
+  state = gate.update(2.0F);
+  TEST_ASSERT_FALSE(state.active);
+
   state = gate.update(6.0F);
   TEST_ASSERT_TRUE(state.active);
   TEST_ASSERT_FALSE(state.triggered);
 
   state = gate.update(2.0F);
   TEST_ASSERT_FALSE(state.active);
+
   state = gate.update(6.0F);
   TEST_ASSERT_TRUE(state.active);
-  TEST_ASSERT_FALSE(state.triggered);
-
-  state = gate.update(2.0F);
-  TEST_ASSERT_FALSE(state.active);
-  state = gate.update(6.0F);
   TEST_ASSERT_TRUE(state.triggered);
 }
 
