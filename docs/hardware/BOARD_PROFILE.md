@@ -89,6 +89,8 @@ Waveshare publishes schematic/example resources from:
 
 ## Matrix
 
+The intended primary human-facing orientation is **USB up, LEDs facing the observer**. Matrix coordinates below use that orientation: `+x` points right and `+y` points down.
+
 | Field | Status | Current value / evidence |
 | --- | --- | --- |
 | Geometry | KNOWN | 8×8 / 64 RGB emitters. |
@@ -96,8 +98,8 @@ Waveshare publishes schematic/example resources from:
 | Control interface | KNOWN, vendor + physical | NeoPixel-compatible single-wire addressable chain; Waveshare's Arduino guide uses NeoPixel APIs on GPIO14 and the physical minimal probe cycles the onboard chain successfully. |
 | Exact LED silicon | NEEDS_PHYSICAL_VALIDATION | Not required by ES-002 if the NeoPixel-compatible timing is correct. |
 | Data GPIO | KNOWN, physical | GPIO14. Minimal `neopixelWrite()` bring-up visibly cycles the onboard RGB chain. |
-| Pixel ordering | NEEDS_PHYSICAL_VALIDATION | ES-002 starts with linear row-major interpretation and provides a one-pixel sweep specifically to measure actual order. |
-| RGB/GRB byte order | KNOWN, physical | RGB. With the original `NEO_GRB` adapter, requested `red -> green -> blue` appeared `green -> red -> blue`, and requested amber appeared lime. The adapter now uses `NEO_RGB`. |
+| Pixel ordering | KNOWN, physical | Linear row-major. With USB up and LEDs facing the observer, index 0 is top-left; indices advance left-to-right across each row, then continue at the left edge of the next row. `index = y * 8 + x`, `x` right, `y` down. No serpentine remap is required. |
+| RGB/GRB byte order | KNOWN, physical | RGB. With the original `NEO_GRB` adapter, requested `red -> green -> blue` appeared `green -> red -> blue`, and requested amber appeared lime. The adapter now uses `NEO_RGB`, which the owner confirmed displays the expected colours. |
 | Development brightness ceiling | ASSUMED policy | ES-002 clamps all output to 32/255 or less and uses 16/255 for full-panel primary-colour frames. This is intentionally conservative, not a certified safe limit. |
 | Practical sustained ceiling | NEEDS_PHYSICAL_VALIDATION | Vendor warns that excessive brightness can rapidly heat/damage the board. Establish later with measured soak evidence. |
 
@@ -115,7 +117,7 @@ The nominal 800 mA LDO rating must not be treated as an LED current budget.
 | INT1 / INT2 | ASSUMED | GPIO10 / GPIO13; unused by ES-002. |
 | Configuration used by ES-002 | IMPLEMENTED + physically exercised | +/-8 g accelerometer and +/-512 dps gyro at 1 kHz sensor ODR with LPFs enabled; firmware nominally polls at 200 Hz. |
 | Stable sample rate | KNOWN for current runtime | Approximately 180 Hz successful polling in the captured run, with zero read failures. |
-| Matrix-relative in-plane orientation | KNOWN, physical visual calibration | Current screen-space transform is `matrix_x=-imu_y`, `matrix_y=+imu_x`, correcting the observed 90-degree rotation so visible gravity points downward on the matrix. |
+| Matrix-relative in-plane orientation | KNOWN, physical visual calibration | Current screen-space transform is `matrix_x=-imu_y`, `matrix_y=+imu_x`, correcting the observed 90-degree rotation so visible gravity points downward on the matrix. The owner confirmed the corrected mapping physically. |
 | Full 3D board-centric orientation | NEEDS_PHYSICAL_VALIDATION | Complete six-pose mapping into USB/SIDE/FACE axes and exact Z/sign conventions remain to be measured. |
 
 For human-facing terminology, future calibration and scene code should use board-centric axes rather than raw sensor names:
@@ -124,7 +126,7 @@ For human-facing terminology, future calibration and scene code should use board
 - **SIDE axis** — in the PCB plane perpendicular to USB, across the matrix left/right;
 - **FACE axis** — normal to the PCB/LED face.
 
-Raw QMI8658 X/Y/Z remain available internally. See `docs/hardware/CALIBRATION_2026-09-14.md` for the physical observations that established the current colour order and in-plane transform.
+In the intended primary orientation, USB is physically up, SIDE spans viewer-left to viewer-right, and FACE points toward/away from the observer. Raw QMI8658 X/Y/Z remain available internally. See `docs/hardware/CALIBRATION_2026-09-14.md` for the physical observations that established the current colour order, pixel order and in-plane transform.
 
 ## BOOT and RESET buttons
 
@@ -156,20 +158,20 @@ The physical bring-up has now established:
 - Arduino user code executes continuously;
 - GPIO14 drives the onboard NeoPixel-compatible RGB chain;
 - logical LED byte order is RGB, not GRB;
+- physical matrix order is linear row-major in the intended USB-up orientation (`index = y * 8 + x`, top-left origin);
 - USB serial/JTAG telemetry works after Windows completes USB re-enumeration/reconnect;
 - QMI8658 responds on GPIO11/GPIO12 at `0x6B` with WHO_AM_I `0x05` and revision `0x7C`;
 - current runtime sustains approximately 180 Hz IMU polling with zero captured read failures;
 - BOOT GPIO0 active-low path produces both short and long events;
-- visible gravity requires the in-plane projection `x=-raw_y`, `y=+raw_x`.
+- visible gravity requires the in-plane projection `x=-raw_y`, `y=+raw_x`, and the corrected mapping was physically confirmed.
 
 The PlatformIO monitor may briefly report `ClearCommError` / `PermissionError(13)` while the device re-enumerates, then reconnect to the same COM port. A reconnect followed by steady heartbeat is not a firmware failure.
 
 Still capture:
 
-1. physical pixel traversal/order of indices 0..63;
-2. six controlled static poses to map raw X/Y/Z into USB/SIDE/FACE and confirm all signs;
-3. any visible PCB revision/date/lot marking;
-4. sustained thermal/current evidence for practical LED brightness ceilings;
-5. whether the single observed TG0 watchdog reset recurs under normal operation.
+1. six controlled static poses to map raw X/Y/Z into USB/SIDE/FACE and confirm all signs;
+2. any visible PCB revision/date/lot marking;
+3. sustained thermal/current evidence for practical LED brightness ceilings;
+4. whether the single observed TG0 watchdog reset recurs under normal operation.
 
 Do not infer a sustained safe LED brightness from a short diagnostic run.
