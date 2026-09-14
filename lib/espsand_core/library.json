@@ -1,0 +1,11 @@
+{
+  "name": "espsand_core",
+  "version": "0.1.0",
+  "description": "Pure host-testable ESPsand core seam",
+  "build": {
+    "includeDir": "include",
+    "srcDir": "src"
+  },
+  "frameworks": "*",
+  "platforms": "*"
+}
