@@ -42,41 +42,52 @@ Scenes may interpret these differently. Examples:
 - moss/mites: scatter agents/seeds;
 - tracer plume: mix/stir scalar concentration.
 
-## Capacitive zones — experimental
+## Capacitive zones — tested board result
 
-Goal: obtain one or two broad interaction regions with **no added components** by exploiting unused native touch-capable ESP32-S3 GPIO pads/traces if the actual board permits.
+The original goal was to obtain one or two broad interaction regions with **no added components** by exploiting unused native touch-capable ESP32-S3 GPIO pads/traces.
 
-This is not a precision touch UI. Desired semantics:
+ES-003 physically tested GPIO1..GPIO7 on the Waveshare ESP32-S3-Matrix. The bare-board result is **combo-only/common-mode useful**:
 
-- significant relative disturbance near region A -> `cap_a` event/intensity;
-- significant relative disturbance near region B -> `cap_b` event/intensity;
-- large common/ambiguous disturbance -> `cap_combo` or probabilistic special event;
+- swiping along the exposed GPIO1..7 edge produces a smooth local-response motion in diagnostics;
+- a fingertip spans most or all of the edge, so individual-pad or clean two-zone operation is not reliable;
+- pinching along the PCB edge gives the strongest repeatable deliberate gesture;
+- common-mode magnitude tracks broad fingertip/PCB contact area well enough to provide a bounded intensity;
+- local channels can flash spuriously, so local A/B activity is not exposed as product input.
+
+Therefore the accepted bare-board semantics are:
+
+- `cap_a = 0`, `event_a = false`;
+- `cap_b = 0`, `event_b = false`;
+- `cap_combo` = normalized common-mode edge-contact intensity;
+- `event_combo` = hysteretic/cooldown-gated deliberate edge-contact event;
 - baseline drift alone -> no event.
 
-False positives are acceptable if they produce interesting, bounded behaviour. False positives must not change scenes, corrupt state, lock the runtime or create sustained maximum brightness.
+This is not pressure sensing. Coupling can vary with contact area, grip, moisture, grounding and other environmental factors.
+
+False positives are acceptable only when bounded. Local diagnostic false activity must not change scenes, corrupt state, lock the runtime or create sustained maximum brightness. The product combo event path therefore uses common mode directly rather than local per-channel activity.
 
 ### Characterization mode
 
-Firmware should provide a diagnostic mode/serial stream showing, per candidate touch channel:
+Firmware provides a diagnostic mode/serial stream showing, per candidate touch channel:
 
 - raw reading;
 - adaptive baseline;
 - delta/normalized delta;
 - estimated noise;
 - event state;
-- common-mode estimate when multiple channels are sampled.
+- common-mode estimate.
 
-Test candidate free touch GPIOs rather than assuming a particular pair.
+Local GPIO1..GPIO7 diagnostics remain useful for research and future coating/recalibration even though the current product mapping is combo-only.
 
 ### Normalization
 
-Prefer normalized disturbance relative to measured noise/baseline, e.g. conceptual `z = (baseline - sample) / noise_scale`, with clipping and adaptive calibration. Exact sign depends on the driver/readout.
+Use normalized disturbance relative to measured noise/baseline with clipping and adaptive calibration. On ESP32-S3, touch raises the raw capacitive reading.
 
-Adapt baseline slowly when idle; freeze or slow baseline adaptation during strong touch events.
+Adapt baseline slowly when idle; freeze or slow baseline adaptation during strong touch events. Common-mode and local-channel components remain separated so noisy local bars cannot directly trigger the accepted combo semantic.
 
 ### Graceful fallback
 
-`ITouchZones` must report unavailable/disabled cleanly. Every scene remains usable with button + IMU only.
+`ITouchZones` reports unavailable/disabled cleanly when hardware initialization fails. Every scene remains fully usable with button + IMU only, and no scene may depend on capacitive success.
 
 ## Event injection
 
