@@ -1,5 +1,7 @@
 #include <Arduino.h>
 
+#ifndef ESPSAND_MINIMAL_BRINGUP
+
 #include "app/diagnostic_runtime.hpp"
 
 namespace {
@@ -16,3 +18,5 @@ void loop() {
   runtime.tick();
   yield();
 }
+
+#endif // ESPSAND_MINIMAL_BRINGUP
