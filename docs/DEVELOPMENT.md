@@ -14,15 +14,9 @@ Create and activate a virtual environment if desired, then install the pinned to
 python -m pip install -r requirements-dev.txt
 ```
 
-The repository pins:
+The repository pins PlatformIO Core `6.1.18`, Espressif32 platform `6.10.0`, native platform `1.2.1`, clang-format `18.1.8`, and Adafruit NeoPixel `1.15.5`.
 
-- PlatformIO Core `6.1.18`;
-- PlatformIO Espressif32 platform `6.10.0`;
-- PlatformIO native platform `1.2.1`;
-- clang-format `18.1.8`;
-- Adafruit NeoPixel `1.15.5` for the embedded matrix adapter.
-
-The firmware compile profile still uses PlatformIO's generic `esp32-s3-devkitc-1` definition. The physical target is the Waveshare ESP32-S3-Matrix; the generic profile is only the reproducible compiler/Arduino-core target and the firmware does not rely on DevKitC-specific peripherals.
+The firmware compile profile uses PlatformIO's generic `esp32-s3-devkitc-1` definition only as a compiler/Arduino-core base. `platformio.ini` overrides the physical Waveshare ESP32-S3FH4R2 memory profile; `docs/hardware/BOARD_PROFILE.md` is the hardware source of truth.
 
 ## One-command verification
 
@@ -32,18 +26,20 @@ Run the same verification sequence as CI:
 python tools/ci.py
 ```
 
-This performs, in order:
+This performs:
 
 1. clang-format check;
 2. host-native unit tests;
-3. ESP32-S3 firmware compile.
+3. ESP32-S3 firmware compile;
+4. ESP32-S3 minimal-bringup compile.
 
-Individual commands are:
+Individual commands include:
 
 ```text
 python tools/format.py --check
 python -m platformio test -e native
 python -m platformio run -e esp32s3
+python -m platformio run -e esp32s3_bringup
 ```
 
 To rewrite C/C++ formatting:
@@ -54,81 +50,88 @@ python tools/format.py --write
 
 The native environment compiles with `-Wall -Wextra -Wpedantic -Werror`.
 
-## Flash the ES-002 board-I/O diagnostic runtime
+## Flash the board diagnostic runtime
 
-Build and upload:
-
-```text
-python -m platformio run -e esp32s3 -t upload
-```
-
-Then open the serial monitor:
+Build/upload and open the monitor:
 
 ```text
-python -m platformio device monitor -b 115200
+python -m platformio run -e esp32s3 -t upload --upload-port COM7
+python -m platformio device monitor -e esp32s3 -p COM7 -b 115200
 ```
 
-The firmware is non-blocking. It drives only the explicitly documented ES-002 resources: the matrix, provisional GPIO0 BOOT input, and provisional GPIO11/GPIO12 QMI8658 I2C bus. It does not use IMU interrupt pins or candidate touch pins.
+Use the actual enumerated port if it is not `COM7`. Native USB may disappear/re-enumerate briefly around reset; PlatformIO can report a transient `ClearCommError` / `PermissionError(13)` before reconnecting.
 
-### Serial output
-
-Startup emits the foundation probe and an ES-002 line similar to:
+Current startup reports an `es003-dev` runtime line similar to:
 
 ```text
-espsand.io start firmware=es002-dev matrix_gpio=14 brightness_ceiling=32 imu_init=1 imu_addr=0x6B who=0x05 revision=0x..
+espsand.io start firmware=es003-dev matrix_gpio=14 brightness_ceiling=32 imu_init=1 imu_addr=0x6B who=0x05 revision=0x7C touch_hw=1 touch_channels=7 touch_zones=0
 ```
 
-Once per second it emits compact runtime telemetry:
+`touch_zones=0` is deliberate during ES-003 characterization. Safe candidate routing is known, but semantic capacitive zones stay unavailable until the owner's physical capture demonstrates useful sensitivity.
 
-```text
-runtime mode=gravity imu_ok=1 imu_addr=0x6B imu_rate_hz=... failures=0 acc_g=(...,...,...) gyro_dps=(...,...,...) max_loop_us=...
-```
+Once per second the runtime also emits compact IMU/timing telemetry. BOOT events are emitted separately. Missing IMU or unavailable touch sensing is a degraded mode rather than a crash condition.
 
-BOOT events are reported separately. If the IMU cannot initialize, the runtime continues: matrix diagnostics still operate, telemetry reports the fault, and blinking red corner pixels mark the degraded state.
-
-### BOOT controls
-
-The diagnostic runtime mirrors the eventual one-button interaction contract:
+## BOOT controls
 
 - **short BOOT press:** reset the current diagnostic page/timer;
-- **long BOOT press:** advance exactly one page while held; releasing it must not generate a short press.
+- **long BOOT press:** advance exactly one diagnostic page while held; release does not generate an additional short event.
 
-The host-tested planning thresholds are <=600 ms for short and >=800 ms for long, with a deliberate ambiguity band between them.
+Host-tested thresholds are <=600 ms for short and >=800 ms for long, with a deliberate 600–800 ms ambiguity band.
 
-### Diagnostic pages
+## Diagnostic pages
 
 Pages cycle in this order:
 
-1. **Pixel sweep** — one amber logical pixel advances from index 0 through 63 every 100 ms. Record the physical path; this establishes the real matrix ordering.
-2. **Primary colours** — full matrix requests red, green and blue in sequence every 700 ms at only 16/255 global brightness. Record the colours actually seen; this establishes RGB/GRB order.
-3. **Gravity** — a cyan point follows the provisional matrix-plane projection of accelerometer X/Y. The current transform is deliberately explicit but unvalidated; this page is for discovering orientation, not asserting it.
+1. **Pixel sweep** — a single amber logical pixel traverses the matrix. Physical calibration established row-major order with USB up, top-left index 0, `index = y * 8 + x`.
+2. **Primary colours** — full-panel red, green, blue. Physical calibration established RGB byte order.
+3. **Gravity** — a cyan point follows calibrated in-plane gravity using `matrix_x=-imu_y`, `matrix_y=+imu_x`.
+4. **Touch characterization** — seven channel bars for GPIO1–GPIO7 plus a common-mode column. This page emits detailed touch telemetry at approximately 10 Hz.
 
-All pages pass through `MatrixOutput`, which clamps output to the current development ceiling of 32/255. No diagnostic page or future scene should write the NeoPixel driver directly.
+All pages pass through `MatrixOutput`, which clamps output to the development ceiling of 32/255. The touch page requests only 12/255 global brightness.
 
-## Physical validation capture for ES-002
+## ES-003 touch characterization
 
-After flashing, paste serial output plus short observations into issue #2 or its PR.
+ES-003 uses only native ESP32-S3 touch sensing and exposed board pads. No foil, wire, resistor, external touch IC or added electrode is part of this experiment.
 
-Capture at least:
+The official Waveshare schematic establishes GPIO1–GPIO7 as the exposed, otherwise-unused touch-capable set. GPIO10–GPIO14 are reserved by IMU/matrix functions; GPIO19/GPIO20 are USB. Runtime sampling reads one touch channel at a time on a bounded schedule and processes a complete seven-channel scan roughly every 28 ms.
 
-1. the complete `espsand.probe begin` through `espsand.probe end` block;
-2. the `espsand.io start` line;
-3. whether pixel index 0 starts where expected and the path taken by all 64 pixels;
-4. whether the requested red -> green -> blue sequence is visually correct;
-5. telemetry while holding the board in six static orientations: face-up, face-down, left edge down, right edge down, USB edge down, opposite edge down;
-6. one short BOOT press and one long BOOT press;
-7. approximately 10 seconds of telemetry to establish IMU rate/failure stability;
-8. any PCB revision/date/lot marking visible on the physical board.
+Enter the fourth diagnostic page with three long BOOT presses from cold-boot pixel sweep. Detailed lines have this shape:
 
-Do **not** use this short diagnostic as evidence for a safe sustained LED brightness. Thermal/current soak belongs to later power-policy validation.
+```text
+touch t_ms=... hw=1 ready=1 zones=0 scans=... cm=... pa=.../0 pb=.../0 pc=.../0 ch1:r... b... d... n... zr... z... a0 ... ch7:...
+```
+
+The pure normalizer is host-tested for adaptive baseline tracking, noise normalization, full common-mode cancellation, hysteresis/cooldown and clean unavailable fallback. Product `cap_a`/`cap_b`/`cap_combo` output remains disabled pending physical evidence.
+
+For the exact physical procedure, field definitions and decision criteria, use:
+
+`docs/hardware/TOUCH_CHARACTERIZATION.md`
+
+The important truth boundary is that firmware compilation and host tests can validate the architecture/algorithm, but only board evidence can decide whether one zone, two zones, combo-only sensing, or no useful bare-board sensing is viable.
+
+## Existing physical board calibration
+
+Current accepted observations for the tested unit include:
+
+- 4 MB flash and approximately 2 MB PSRAM;
+- RGB matrix on GPIO14;
+- RGB colour order;
+- linear row-major pixel order in primary orientation (USB up, LEDs facing user);
+- QMI8658 SDA/SCL GPIO11/GPIO12, address `0x6B`, WHO_AM_I `0x05`, revision `0x7C`;
+- approximately 180 Hz successful IMU polling in captured runs;
+- BOOT GPIO0 active-low;
+- in-plane gravity transform `x=-raw_y`, `y=+raw_x`;
+- Wi-Fi/Bluetooth deliberately kept off for v0 runtime.
+
+Do **not** use short diagnostics as evidence for a safe sustained LED brightness. Thermal/current soak belongs to later power-policy validation.
 
 ## Source boundaries
 
-- `lib/espsand_core/` is pure, host-testable C++ and contains board-independent I/O contracts plus deterministic input state machines.
-- `src/board/` contains hardware-facing ESP32/Arduino adapters.
-- `src/app/diagnostic_runtime.*` is the ES-002 non-blocking orchestration layer.
-- `src/main.cpp` is the embedded entry point.
-- `test/` contains host-native tests and fakes.
-- `docs/hardware/BOARD_PROFILE.md` is the source of truth for hardware facts and evidence status.
+- `lib/espsand_core/` — pure host-testable contracts and input state machines, including touch normalization/gating;
+- `src/board/` — hardware-facing ESP32/Arduino adapters, including `TouchZones`;
+- `src/app/diagnostic_runtime.*` — non-blocking board diagnostic orchestration;
+- `src/main.cpp` — embedded entry point;
+- `test/` — host-native tests and fakes;
+- `docs/hardware/BOARD_PROFILE.md` — source of truth for hardware facts/evidence status.
 
-Do not promote `ASSUMED` hardware values to `KNOWN` without vendor or physical evidence.
+Do not promote physical sensitivity, thermal limits or other hardware behaviour from expectation to fact without evidence.
