@@ -51,6 +51,23 @@ The common ESP32-S3 environment now overrides the complete memory profile:
 
 This is deliberately a target-profile correction, not a peripheral change.
 
+## Successful bring-up result
+
+After the full FH4R2 profile correction and a successful clean upload, the minimal probe ran continuously on the physical board:
+
+- the onboard RGB chain cycled visibly through red, green, blue and off, confirming application execution and the GPIO14 NeoPixel-compatible path;
+- the PlatformIO monitor initially appeared blank, then Windows reported a transient `ClearCommError` / `PermissionError(13)` disconnect and automatically reconnected to `COM7`;
+- after reconnect, the expected heartbeat streamed once per second, for example:
+
+```text
+espsand.bringup alive ms=11061 phase=2
+espsand.bringup alive ms=12061 phase=3
+espsand.bringup alive ms=13061 phase=0
+espsand.bringup alive ms=14061 phase=1
+```
+
+This establishes that the corrected board profile boots, Arduino `setup()`/`loop()` execute, GPIO14 drives the onboard RGB chain, and the hardware CDC/JTAG serial path works. The one transient Windows/pySerial disconnect during USB re-enumeration is now treated as a host-side attach/reconnect characteristic rather than a firmware failure.
+
 ## What the minimal target removes
 
 `esp32s3_bringup` does not instantiate the ES-002 runtime, matrix library adapter, QMI8658 driver, button logic, scheduler, or diagnostics stack.
@@ -64,7 +81,7 @@ The probe uses brightness `8/255`, far below showcase levels.
 
 ## Windows / COM7 procedure
 
-Because the partition table has changed from the generic 8 MB default to the correct 4 MB table, use a clean build and erase flash before the next test so stale partition/coredump data cannot survive:
+Because the partition table changed from the generic 8 MB default to the correct 4 MB table, the first corrected run used a clean build and, where possible, a flash erase before upload:
 
 ```powershell
 cd C:\Users\-\ESPsand
@@ -75,34 +92,18 @@ python -m platformio run -e esp32s3_bringup -t upload --upload-port COM7
 python -m platformio device monitor -e esp32s3_bringup -p COM7 -b 115200
 ```
 
-If erase/upload cannot enter download mode automatically, hold BOOT, tap RESET, release BOOT, then retry.
+The standalone erase may fail if the rebooting board transiently disappears from Windows. A successful upload still rewrites the bootloader, partition table and application. If erase/upload cannot enter download mode automatically, hold BOOT, tap RESET, release BOOT, then retry.
 
-The environment sets `monitor_dtr = 0` and `monitor_rts = 0` so opening the monitor does not deliberately manipulate those control lines.
+The environment sets `monitor_dtr = 0` and `monitor_rts = 0` so opening the monitor does not deliberately manipulate those control lines. The monitor may briefly disconnect while Windows re-enumerates the ESP32-S3 USB device; if it reconnects to the same port and the heartbeat resumes, treat that as normal host-side attach behavior.
 
-## Expected evidence
-
-Serial, if working, should contain:
-
-```text
-espsand.bringup boot
-espsand.bringup gpio14=vendor_neopixel serial=hwcdc
-espsand.bringup alive ms=... phase=...
-```
-
-Visually, at least the first RGB-chain LED should cycle:
-
-```text
-red -> green -> blue -> off -> repeat
-```
-
-## Interpretation after the full FH4R2 profile fix
+## Interpretation
 
 | Observation | Meaning |
 | --- | --- |
-| LED cycles and serial heartbeat appears | Basic boot, GPIO14, Arduino runtime and serial path work; return to ES-002 diagnostics. |
+| LED cycles and serial heartbeat appears | **Observed on physical hardware.** Basic boot, GPIO14, Arduino runtime and serial path work; return to ES-002 diagnostics. |
 | LED cycles but serial is silent | User code is executing and GPIO14 is valid; investigate USB CDC/monitor configuration. |
 | Serial heartbeat appears but LED is silent | User code and serial work; investigate RGB electrical/protocol/chain assumptions. |
 | Immediate reset loop remains | Memory-profile mismatch was not the only startup problem; capture the exact reset block and continue below Arduino `setup()`/core-init level. |
 | The 8192k-vs-4096k assertion returns | Local checkout/build cache is stale or the corrected profile was not used. |
 
-Do not promote unresolved peripheral fields to `KNOWN` solely because this probe compiles. Physical observations remain authoritative.
+Do not promote unresolved peripheral fields beyond the evidence above. Pixel ordering, RGB/GRB byte order under the ES-002 adapter, IMU routing/orientation and BOOT behavior still require their dedicated physical checks.
