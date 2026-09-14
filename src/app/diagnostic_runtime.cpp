@@ -13,8 +13,10 @@ namespace {
 constexpr std::uint64_t kImuPeriodUs = 5000;
 constexpr std::uint64_t kRenderPeriodUs = 16667;
 constexpr std::uint64_t kTelemetryPeriodUs = 1000000;
+constexpr std::uint64_t kTouchTelemetryPeriodUs = 100000;
 constexpr std::uint8_t kNormalBrightness = 24;
 constexpr std::uint8_t kPrimaryBrightness = 16;
+constexpr std::uint8_t kTouchBrightness = 12;
 
 std::size_t pixel_index(int x, int y) {
   const int clamped_x = std::clamp(x, 0, static_cast<int>(io::kMatrixWidth) - 1);
@@ -41,25 +43,30 @@ void DiagnosticRuntime::begin() {
   diagnostics_.begin();
   matrix_.begin();
   button_.begin();
+  const bool touch_ok = touch_.begin();
 
   const std::uint64_t now_us = clock_.now_us();
   controller_.initialize(static_cast<std::uint32_t>(now_us / 1000U));
 
   board::print_foundation_probe();
   const bool imu_ok = imu_.begin();
-  const auto status = imu_.status();
+  const auto imu_status = imu_.status();
+  const auto touch_status = touch_.status();
 
-  char line[192];
+  char line[256];
   std::snprintf(line, sizeof(line),
-                "espsand.io start firmware=es002-dev matrix_gpio=%d brightness_ceiling=%u "
-                "imu_init=%u imu_addr=0x%02X who=0x%02X revision=0x%02X",
+                "espsand.io start firmware=es003-dev matrix_gpio=%d brightness_ceiling=%u "
+                "imu_init=%u imu_addr=0x%02X who=0x%02X revision=0x%02X "
+                "touch_hw=%u touch_channels=%u touch_zones=%u",
                 board::kMatrixData.gpio, matrix_.brightness_ceiling(), imu_ok ? 1U : 0U,
-                status.address, status.who_am_i, status.revision);
+                imu_status.address, imu_status.who_am_i, imu_status.revision, touch_ok ? 1U : 0U,
+                touch_status.channel_count, touch_status.zones_configured ? 1U : 0U);
   diagnostics_.write_line(line);
 
   next_imu_us_ = now_us;
   next_render_us_ = now_us;
   next_telemetry_us_ = now_us + kTelemetryPeriodUs;
+  next_touch_telemetry_us_ = now_us;
   telemetry_window_start_us_ = now_us;
 }
 
@@ -72,6 +79,9 @@ void DiagnosticRuntime::tick() {
     controller_.handle_button(event, static_cast<std::uint32_t>(now_us / 1000U));
     emit_button_event(event);
     next_render_us_ = now_us;
+    if (controller_.mode() == runtime::DiagnosticMode::kTouchCharacterization) {
+      next_touch_telemetry_us_ = now_us;
+    }
   }
 
   if (now_us >= next_imu_us_) {
@@ -83,6 +93,11 @@ void DiagnosticRuntime::tick() {
     }
   }
 
+  io::TouchFrame touch_frame;
+  if (touch_.poll(now_us, touch_frame)) {
+    latest_touch_ = touch_frame;
+  }
+
   if (now_us >= next_render_us_) {
     next_render_us_ = now_us + kRenderPeriodUs;
     render(now_us);
@@ -91,6 +106,12 @@ void DiagnosticRuntime::tick() {
   if (now_us >= next_telemetry_us_) {
     emit_telemetry(now_us);
     next_telemetry_us_ = now_us + kTelemetryPeriodUs;
+  }
+
+  if (controller_.mode() == runtime::DiagnosticMode::kTouchCharacterization &&
+      now_us >= next_touch_telemetry_us_) {
+    emit_touch_telemetry(now_us);
+    next_touch_telemetry_us_ = now_us + kTouchTelemetryPeriodUs;
   }
 
   const std::uint64_t loop_elapsed_us = clock_.now_us() - loop_start_us;
@@ -113,6 +134,10 @@ void DiagnosticRuntime::render(std::uint64_t now_us) {
     break;
   case runtime::DiagnosticMode::kGravity:
     render_gravity(frame);
+    break;
+  case runtime::DiagnosticMode::kTouchCharacterization:
+    render_touch_characterization(frame);
+    requested_brightness = kTouchBrightness;
     break;
   case runtime::DiagnosticMode::kCount:
     break;
@@ -156,6 +181,41 @@ void DiagnosticRuntime::render_gravity(io::Frame8x8& frame) const {
   frame[pixel_index(3, 3)] = {0, 10, 10};
 }
 
+void DiagnosticRuntime::render_touch_characterization(io::Frame8x8& frame) const {
+  const auto status = touch_.status();
+  const auto touch = touch_.diagnostics();
+
+  if (!status.hardware_available) {
+    frame[pixel_index(0, 0)] = {160, 0, 0};
+    frame[pixel_index(7, 0)] = {160, 0, 0};
+    frame[pixel_index(0, 7)] = {160, 0, 0};
+    frame[pixel_index(7, 7)] = {160, 0, 0};
+    return;
+  }
+
+  for (std::size_t index = 0; index < touch.channel_count && index < 7; ++index) {
+    const auto& channel = touch.channels[index];
+    const float positive_z = std::clamp(channel.z, 0.0F, 10.0F);
+    const int height = static_cast<int>(std::lround(positive_z * 0.8F));
+    const io::Rgb colour = channel.active ? io::Rgb{255, 96, 0} : io::Rgb{0, 100, 140};
+
+    if (!touch.ready) {
+      frame[pixel_index(static_cast<int>(index), 7)] = {0, 15, 24};
+      continue;
+    }
+
+    for (int level = 0; level < height; ++level) {
+      frame[pixel_index(static_cast<int>(index), 7 - level)] = colour;
+    }
+  }
+
+  const float positive_common = std::clamp(touch.common_mode_z, 0.0F, 10.0F);
+  const int common_height = static_cast<int>(std::lround(positive_common * 0.8F));
+  for (int level = 0; level < common_height; ++level) {
+    frame[pixel_index(7, 7 - level)] = {120, 0, 160};
+  }
+}
+
 void DiagnosticRuntime::overlay_fault(io::Frame8x8& frame, std::uint32_t elapsed_ms) const {
   const auto status = imu_.status();
   if (status.healthy || ((elapsed_ms / 250U) % 2U) == 0U) {
@@ -176,27 +236,75 @@ void DiagnosticRuntime::emit_button_event(io::ButtonEvent event) {
 
 void DiagnosticRuntime::emit_telemetry(std::uint64_t now_us) {
   const auto status = imu_.status();
+  const auto touch_status = touch_.status();
   const std::uint64_t window_us = now_us - telemetry_window_start_us_;
   const float imu_rate_hz = window_us == 0 ? 0.0F
                                            : static_cast<float>(imu_samples_window_) * 1000000.0F /
                                                  static_cast<float>(window_us);
 
-  char line[320];
+  char line[384];
   std::snprintf(
       line, sizeof(line),
       "runtime mode=%s imu_ok=%u imu_addr=0x%02X imu_rate_hz=%.1f failures=%lu "
-      "acc_g=(%+.3f,%+.3f,%+.3f) gyro_dps=(%+.2f,%+.2f,%+.2f) max_loop_us=%llu",
+      "acc_g=(%+.3f,%+.3f,%+.3f) gyro_dps=(%+.2f,%+.2f,%+.2f) "
+      "touch_hw=%u touch_scans=%lu max_loop_us=%llu",
       runtime::diagnostic_mode_name(controller_.mode()), status.healthy ? 1U : 0U, status.address,
       static_cast<double>(imu_rate_hz), static_cast<unsigned long>(status.failure_count),
       static_cast<double>(latest_imu_.accel_g.x), static_cast<double>(latest_imu_.accel_g.y),
       static_cast<double>(latest_imu_.accel_g.z), static_cast<double>(latest_imu_.gyro_dps.x),
       static_cast<double>(latest_imu_.gyro_dps.y), static_cast<double>(latest_imu_.gyro_dps.z),
+      touch_status.hardware_available ? 1U : 0U,
+      static_cast<unsigned long>(touch_status.sample_count),
       static_cast<unsigned long long>(max_loop_us_));
   diagnostics_.write_line(line);
 
   telemetry_window_start_us_ = now_us;
   imu_samples_window_ = 0;
   max_loop_us_ = 0;
+}
+
+void DiagnosticRuntime::emit_touch_telemetry(std::uint64_t now_us) {
+  const auto status = touch_.status();
+  const auto touch = touch_.diagnostics();
+
+  char line[1024];
+  int written = std::snprintf(
+      line, sizeof(line),
+      "touch t_ms=%llu hw=%u ready=%u zones=%u scans=%lu cm=%+.2f "
+      "pa=%.2f/%u pb=%.2f/%u pc=%.2f/%u",
+      static_cast<unsigned long long>(now_us / 1000U), status.hardware_available ? 1U : 0U,
+      touch.ready ? 1U : 0U, status.zones_configured ? 1U : 0U,
+      static_cast<unsigned long>(status.sample_count), static_cast<double>(touch.common_mode_z),
+      static_cast<double>(touch.provisional_a), touch.provisional_a_active ? 1U : 0U,
+      static_cast<double>(touch.provisional_b), touch.provisional_b_active ? 1U : 0U,
+      static_cast<double>(touch.provisional_combo), touch.provisional_combo_active ? 1U : 0U);
+
+  if (written < 0) {
+    return;
+  }
+
+  std::size_t used = std::min(static_cast<std::size_t>(written), sizeof(line) - 1U);
+  for (std::size_t index = 0; index < touch.channel_count && used < sizeof(line) - 1U; ++index) {
+    const auto& channel = touch.channels[index];
+    const int appended = std::snprintf(
+        line + used, sizeof(line) - used,
+        " ch%d:r%lu b%.1f d%+.1f n%.1f zr%+.2f z%+.2f a%u",
+        board::kTouchCandidates[index].gpio, static_cast<unsigned long>(channel.raw),
+        static_cast<double>(channel.baseline), static_cast<double>(channel.delta),
+        static_cast<double>(channel.noise), static_cast<double>(channel.z_raw),
+        static_cast<double>(channel.z), channel.active ? 1U : 0U);
+    if (appended < 0) {
+      break;
+    }
+    const std::size_t available = sizeof(line) - used;
+    if (static_cast<std::size_t>(appended) >= available) {
+      used = sizeof(line) - 1U;
+      break;
+    }
+    used += static_cast<std::size_t>(appended);
+  }
+
+  diagnostics_.write_line(line);
 }
 
 } // namespace espsand::app
