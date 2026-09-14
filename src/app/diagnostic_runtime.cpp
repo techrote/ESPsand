@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 #include "board/board_profile.hpp"
 #include "board/diagnostics.hpp"
@@ -286,22 +287,19 @@ void DiagnosticRuntime::emit_touch_telemetry(std::uint64_t now_us) {
   std::size_t used = std::min(static_cast<std::size_t>(written), sizeof(line) - 1U);
   for (std::size_t index = 0; index < touch.channel_count && used < sizeof(line) - 1U; ++index) {
     const auto& channel = touch.channels[index];
-    const int appended =
-        std::snprintf(line + used, sizeof(line) - used,
-                      " ch%d:r%lu b%.1f d%+.1f n%.1f zr%+.2f z%+.2f a%u",
-                      board::kTouchCandidates[index].gpio, static_cast<unsigned long>(channel.raw),
-                      static_cast<double>(channel.baseline), static_cast<double>(channel.delta),
-                      static_cast<double>(channel.noise), static_cast<double>(channel.z_raw),
-                      static_cast<double>(channel.z), channel.active ? 1U : 0U);
-    if (appended < 0) {
-      break;
-    }
-    const std::size_t available = sizeof(line) - used;
-    if (static_cast<std::size_t>(appended) >= available) {
-      used = sizeof(line) - 1U;
-      break;
-    }
-    used += static_cast<std::size_t>(appended);
+    char chunk[192];
+    std::snprintf(
+        chunk, sizeof(chunk), " ch%d:r%lu b%.1f d%+.1f n%.1f zr%+.2f z%+.2f a%u",
+        board::kTouchCandidates[index].gpio, static_cast<unsigned long>(channel.raw),
+        static_cast<double>(channel.baseline), static_cast<double>(channel.delta),
+        static_cast<double>(channel.noise), static_cast<double>(channel.z_raw),
+        static_cast<double>(channel.z), channel.active ? 1U : 0U);
+
+    const std::size_t remaining = sizeof(line) - used - 1U;
+    const std::size_t chunk_length = std::min(std::strlen(chunk), remaining);
+    std::memcpy(line + used, chunk, chunk_length);
+    used += chunk_length;
+    line[used] = '\0';
   }
 
   diagnostics_.write_line(line);
