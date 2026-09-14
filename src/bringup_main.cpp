@@ -2,6 +2,8 @@
 
 #ifdef ESPSAND_MINIMAL_BRINGUP
 
+#include "board/power_policy.hpp"
+
 namespace {
 
 constexpr std::uint8_t kNeoPixelPin = 14;
@@ -31,6 +33,8 @@ void show_phase(std::uint8_t value) {
 } // namespace
 
 void setup() {
+  espsand::board::apply_power_policy();
+
   Serial.begin(115200);
   Serial.setDebugOutput(true);
 
@@ -39,8 +43,12 @@ void setup() {
   // delay gives the host a chance to settle after the upload/reset cycle.
   delay(750);
 
+  const auto& power = espsand::board::power_policy_status();
   Serial.println("espsand.bringup boot");
   Serial.println("espsand.bringup gpio14=vendor_neopixel serial=hwcdc");
+  Serial.printf("espsand.bringup power wifi_off=%u bt_off=%u bt_mem_released=%u\n",
+                power.wifi_off ? 1U : 0U, power.bluetooth_off ? 1U : 0U,
+                power.bluetooth_memory_released ? 1U : 0U);
 
   show_phase(phase);
   last_phase_ms = millis();
