@@ -130,21 +130,21 @@ ESPsand uses BOOT as GPIO0 active-low. The host-tested gesture state machine is:
 
 Both short and long events were physically observed through this path.
 
-## Touch-capable candidates — ES-003
+## Touch-capable candidates — ES-003 / ES-003A
 
 The ESP32-S3 has native touch sensing on GPIO1–GPIO14, but board routing determines which channels are actually safe and useful.
 
 Waveshare's official schematic plus the physical edge labels establish the no-component characterization set:
 
-| GPIO | Routing/capability status | ES-003 result |
+| GPIO | Routing/capability status | Result |
 | ---: | --- | --- |
-| 1 | KNOWN: exposed header, native touch | diagnostic local response only |
-| 2 | KNOWN: exposed header, native touch | diagnostic local response only |
-| 3 | KNOWN: exposed header, native touch | diagnostic local response only |
-| 4 | KNOWN: exposed header, native touch | diagnostic centre/local response only |
-| 5 | KNOWN: exposed header, native touch | diagnostic local response only |
-| 6 | KNOWN: exposed header, native touch | diagnostic local response only |
-| 7 | KNOWN: exposed header, native touch | diagnostic local response only |
+| 1 | KNOWN: exposed header, native touch | coarse local position/diagnostic response |
+| 2 | KNOWN: exposed header, native touch | coarse local position/diagnostic response |
+| 3 | KNOWN: exposed header, native touch | coarse local position/diagnostic response |
+| 4 | KNOWN: exposed header, native touch | coarse local position/diagnostic response |
+| 5 | KNOWN: exposed header, native touch | coarse local position/diagnostic response |
+| 6 | KNOWN: exposed header, native touch | coarse local position/diagnostic response; physically observed to false-flash more often |
+| 7 | KNOWN: exposed header, native touch | coarse local position/diagnostic response |
 | 8–9 | Native touch in silicon but not exposed on this board header | not useful as bare-board electrodes |
 | 10 | QMI8658 INT1 | excluded |
 | 11 | QMI8658 SDA | excluded |
@@ -152,21 +152,23 @@ Waveshare's official schematic plus the physical edge labels establish the no-co
 | 13 | QMI8658 INT2 | excluded |
 | 14 | RGB matrix data | excluded |
 
-GPIO1–GPIO7 are KNOWN safe touch candidates. Physical ES-003 testing resolved the bare-board capability as **combo-only/common-mode useful** rather than two independent zones.
+GPIO1–GPIO7 are KNOWN safe touch candidates. Physical testing established:
 
-Observed behaviour on the tested board:
+- a normal fingertip spans most or all of the edge, so individual-pad or clean A/B button semantics are not reliable;
+- pinching the PCB edge gives a strong common-mode response;
+- broad common-mode magnitude is useful as `cap_combo`;
+- during that strong pinch, the pattern of local channels sweeps smoothly enough to support a **coarse direct slider**;
+- local channels can flash spuriously, so slider position is exported only when common mode is near full-scale and at least two local channels are simultaneously active;
+- the slider position is a smoothed weighted centroid across the seven local responses, normalized 0..1;
+- occasional very fast isolated near-full local excursions are exported only as an explicit bounded external `noise_impulse`/`noise_event` candidate.
 
-- swiping along the GPIO1..7 edge moves the local-response indication smoothly across the matrix;
-- a normal fingertip spans most or all of the edge, so targeting one pad or cleanly separating two regions is impractical;
-- pinching along the PCB edge gives the strongest and most repeatable response;
-- the common-mode response tracks broad fingertip/PCB contact area well enough to provide a useful bounded intensity;
-- local normalized channels sometimes flash amber spuriously, so local A/B events are not exposed to scenes.
+`cap_a` and `cap_b` remain disabled. The noise impulse is not hidden model randomness: if used by a simulation it must be included in the deterministic per-tick input trace.
 
-The product mapping is therefore `cap_combo`/`event_combo` only. It uses the common-mode channel directly; local GPIO1..7 activity remains diagnostic and cannot directly trigger a product capacitive event. `cap_a` and `cap_b` remain zero on this board profile.
+The cyan/blue diagnostic bars are significant telemetry rather than decoration. They are positive subthreshold common-mode-corrected local `z` values; correlated movement across neighbouring columns means correlated non-uniform capacitive variation remains after common-mode subtraction. Amber indicates a local threshold crossing. Purple is the common-mode component.
 
 This is not a force or pressure measurement. Contact area, grip, moisture, grounding and other environmental effects can all change capacitive coupling.
 
-See `docs/hardware/TOUCH_CHARACTERIZATION.md` for the detailed evidence boundary. The `NullTouchZones` adapter remains available so no scene depends on touch success.
+See `docs/hardware/TOUCH_CHARACTERIZATION.md` for detailed semantics. The `NullTouchZones` adapter remains available so no scene depends on touch success.
 
 ## Radio / thermal policy
 
@@ -187,7 +189,7 @@ The board bring-up has established:
 - approximately 180 Hz IMU polling with zero captured read failures;
 - BOOT GPIO0 active-low short/long handling;
 - corrected in-plane gravity transform `x=-raw_y`, `y=+raw_x`;
-- bare-board GPIO1..7 capacitive sensing is useful as a deliberate edge-pinch/common-mode gesture, while reliable local A/B discrimination is not supported.
+- bare-board GPIO1..7 capacitive sensing supports broad edge-pinch input and a pinch-gated coarse slider, but not reliable separate A/B buttons.
 
 The PlatformIO monitor may briefly report `ClearCommError` / `PermissionError(13)` while native USB re-enumerates, then reconnect to the same COM port. A reconnect followed by steady telemetry is not a firmware failure.
 
