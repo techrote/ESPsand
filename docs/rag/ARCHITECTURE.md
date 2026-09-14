@@ -1,8 +1,16 @@
 # ESPsand v0 firmware architecture
 
-## Baseline toolchain
+## Accepted foundation toolchain
 
-Planning baseline: PlatformIO with an ESP32-S3-capable Arduino/ESP-IDF environment. The foundation issue may refine this after actual board identification, but must preserve automated host tests and reproducible firmware builds.
+ES-001 selects **PlatformIO** as the v0 build/test orchestrator:
+
+- PlatformIO Core `6.1.18` via `requirements-dev.txt`;
+- Espressif32 platform `6.10.0`;
+- Arduino framework for the embedded foundation;
+- native platform `1.2.1` + Unity for host tests;
+- clang-format `18.1.8`.
+
+The compile target uses PlatformIO's generic `esp32-s3-devkitc-1` board definition until the exact physical ESPsand board/revision is verified. This is a reproducible compiler target, not a claim that the owner's board is a DevKitC. Physical facts are tracked in `docs/hardware/BOARD_PROFILE.md`.
 
 ## Layering
 
@@ -25,31 +33,32 @@ renderer
 
 Dependencies should point inward. The pure model must not include Arduino headers, GPIO numbers or LED-driver APIs.
 
-## Suggested repository shape
+## Repository shape
+
+The foundation establishes:
 
 ```text
 platformio.ini
 src/
   main.cpp
-  app/
   board/
-  input/
-  render/
-  scenes/
 lib/
   espsand_core/
-    world/
-    materials/
-    reactions/
-    biology/
+    include/
+    src/
 test/
-  native/
-  fixtures/
+  test_foundation/
+tools/
+  ci.py
+  format.py
 docs/
+  hardware/
   rag/
+.github/
+  workflows/
 ```
 
-Exact file names can evolve, but preserve the architecture seam.
+Later issues may add `app/`, `input/`, `render/`, `scenes/`, world/material/reaction/biology modules and fixtures while preserving the hardware/pure-core seam.
 
 ## Timing model
 
@@ -101,7 +110,7 @@ A scene should **not** reimplement gravity transport, thermal diffusion, generic
 
 ## Serial diagnostics
 
-Development output should be machine-readable enough to support capture. Include at minimum:
+Development output should be machine-readable enough to support capture. The ES-001 foundation already emits a periodic safe hardware/profile probe without driving unresolved peripheral pins. Later runtime diagnostics should add:
 
 - firmware version/git identifier if available;
 - current scene and seed;

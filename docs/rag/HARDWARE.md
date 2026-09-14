@@ -1,33 +1,33 @@
 # ESPsand v0 hardware target and characterization
 
-## Known target class
+## Current identification state
 
-The intended board is an ESP32-S3 module integrating:
+The owner's boards are identified as ESP32-S3 8×8 RGB-matrix boards with a QMI8658C-class six-axis IMU, BOOT button and USB. Three are available; v0 still targets one board only.
 
-- 8×8 addressable RGB LED matrix;
-- QMI8658C-class 6-axis accelerometer/gyroscope;
-- one BOOT/flash button available for interaction;
-- USB power/data;
-- exposed GPIOs, some potentially ESP32-S3 native capacitive-touch capable.
+The feature set closely matches Waveshare `ESP32-S3-Matrix` SKU 27119, but the exact owner PCB/revision has **not yet been physically confirmed**. `docs/hardware/BOARD_PROFILE.md` is now the authoritative field-by-field evidence record.
 
-Three boards are available to the owner, but v0 targets one board only.
+Do not promote likely product-family values to facts merely because public pinouts match.
 
-## Do not assume the exact pin map
+## Foundation compile profile
 
-The product listing/revision must be identified from the actual hardware before pin constants are committed as authoritative. Record, with evidence where possible:
+ES-001 uses PlatformIO's generic `esp32-s3-devkitc-1` definition as a reproducible **compile profile** with the Arduino framework. It is not the hardware identity.
+
+The ES-001 runtime probe deliberately avoids driving matrix, IMU, BOOT or touch-candidate pins. It reports chip/flash/PSRAM/runtime identity plus the current status of provisional profile values.
+
+## Hardware facts to reconcile
+
+Record, with evidence:
 
 - exact product/revision marking;
-- ESP32-S3 module variant, flash and PSRAM if present;
+- ESP32-S3 module/chip revision, flash and PSRAM if present;
 - RGB matrix protocol/type, data GPIO, pixel ordering and colour order;
-- QMI8658C I2C SDA/SCL pins and I2C address;
+- QMI8658C I2C SDA/SCL pins, address and interrupt pins;
 - IMU physical axis orientation relative to matrix rows/columns;
 - BOOT button GPIO and active level;
 - exposed free GPIOs;
 - which free GPIOs support native ESP32-S3 touch sensing;
 - conflicts between touch candidates and matrix/IMU/USB/boot functions;
 - practical matrix brightness before board temperature/current becomes undesirable.
-
-If the repository later contains a validated board profile, accepted implementation and test evidence supersede this uncertainty list.
 
 ## Hardware abstraction boundary
 
@@ -42,9 +42,11 @@ Board drivers must not own simulation semantics. Use narrow interfaces such as:
 
 Host fakes should implement these interfaces or an equivalent seam so orchestration and simulation can test without hardware.
 
+The foundation enforces the first architectural part of this boundary: `lib/espsand_core/` is host-testable C++ with no Arduino/ESP headers, while embedded diagnostics live under `src/board/`.
+
 ## IMU requirements
 
-Prefer raw accelerometer + gyro access. Do not rely solely on fused attitude. For ESPsand, the useful channels are:
+Prefer raw accelerometer + gyro access. Do not rely solely on fused attitude. Useful channels are:
 
 - low-pass acceleration direction -> projected gravity;
 - high-pass/transient acceleration -> shake/impulse;
@@ -57,13 +59,13 @@ The matrix-plane orientation transform must be explicit and testable.
 
 The 64 LEDs can draw substantial current at high simultaneous brightness. v0 therefore requires a single centralized output budget rather than scene-specific arbitrary brightness.
 
-Until measured on the actual board, use a conservative software ceiling. Scene code may request HDR-like logical intensity, but the renderer/output stage must tone-map/clamp to the configured safe envelope.
+The likely Waveshare-family vendor explicitly warns that excessive brightness can rapidly heat and damage the board. This warning does not provide a numeric safe ceiling. Until measured on the actual board, use a conservative software ceiling and keep its status `NEEDS_PHYSICAL_VALIDATION`.
 
 ## Capacitive experiment constraints
 
-The ESP32-S3 supports native touch sensing on a subset of GPIOs, but exact usable pins depend on this board's routing.
+The ESP32-S3 supports native touch sensing on GPIO1–GPIO14 at the silicon level, but exact usable pins depend on board routing.
 
-The desired v0 experiment uses **no added components**. Candidate exposed pads/traces may act as poor-but-useful electrodes. The project specifically values large relative disturbance detection over precise buttons.
+The desired v0 experiment uses **no added components**. Candidate exposed pads/traces may act as poor-but-useful electrodes. The project values large relative disturbance detection over precise buttons.
 
 Requirements:
 
