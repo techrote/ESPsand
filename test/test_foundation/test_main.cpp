@@ -9,7 +9,7 @@ void test_project_identity() {
   TEST_ASSERT_EQUAL_UINT32(1U, espsand::core::kFoundationSchemaVersion);
 }
 
-}  // namespace
+} // namespace
 
 int main(int, char**) {
   UNITY_BEGIN();

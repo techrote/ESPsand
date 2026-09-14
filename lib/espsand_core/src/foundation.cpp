@@ -2,6 +2,8 @@
 
 namespace espsand::core {
 
-const char* project_name() { return "ESPsand"; }
+const char* project_name() {
+  return "ESPsand";
+}
 
-}  // namespace espsand::core
+} // namespace espsand::core

@@ -26,4 +26,4 @@ inline constexpr PinFact kImuInt1{"imu_int1", 10, EvidenceStatus::kAssumed};
 inline constexpr PinFact kImuInt2{"imu_int2", 13, EvidenceStatus::kAssumed};
 inline constexpr PinFact kBootButton{"boot_button", 0, EvidenceStatus::kAssumed};
 
-}  // namespace espsand::board
+} // namespace espsand::board

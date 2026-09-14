@@ -11,7 +11,7 @@ constexpr unsigned long kProbeRepeatPeriodMs = 30000;
 unsigned long last_heartbeat_ms = 0;
 unsigned long last_probe_ms = 0;
 
-}  // namespace
+} // namespace
 
 void setup() {
   Serial.begin(kSerialBaud);

@@ -11,30 +11,28 @@ namespace {
 
 const char* status_name(EvidenceStatus status) {
   switch (status) {
-    case EvidenceStatus::kKnown:
-      return "KNOWN";
-    case EvidenceStatus::kAssumed:
-      return "ASSUMED";
-    case EvidenceStatus::kNeedsPhysicalValidation:
-      return "NEEDS_PHYSICAL_VALIDATION";
+  case EvidenceStatus::kKnown:
+    return "KNOWN";
+  case EvidenceStatus::kAssumed:
+    return "ASSUMED";
+  case EvidenceStatus::kNeedsPhysicalValidation:
+    return "NEEDS_PHYSICAL_VALIDATION";
   }
   return "INVALID";
 }
 
 void print_pin_fact(const PinFact& fact) {
-  Serial.printf(
-      "profile.pin signal=%s gpio=%d status=%s\n", fact.signal, fact.gpio, status_name(fact.status));
+  Serial.printf("profile.pin signal=%s gpio=%d status=%s\n", fact.signal, fact.gpio,
+                status_name(fact.status));
 }
 
-}  // namespace
+} // namespace
 
 void print_foundation_probe() {
   Serial.println("espsand.probe begin");
   Serial.printf("project.name=%s\n", espsand::core::project_name());
-  Serial.printf(
-      "profile.product_family=%s status=%s\n",
-      kExpectedProductFamily,
-      status_name(kProductFamilyStatus));
+  Serial.printf("profile.product_family=%s status=%s\n", kExpectedProductFamily,
+                status_name(kProductFamilyStatus));
 
   Serial.printf("chip.model=%s\n", ESP.getChipModel());
   Serial.printf("chip.revision=%u\n", ESP.getChipRevision());
@@ -63,4 +61,4 @@ void print_foundation_probe() {
   Serial.println("espsand.probe end");
 }
 
-}  // namespace espsand::board
+} // namespace espsand::board
