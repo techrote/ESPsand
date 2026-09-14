@@ -54,8 +54,7 @@ bool TouchZones::poll(std::uint64_t now_us, io::TouchFrame& frame) {
   }
   next_channel_us_ = now_us + kChannelPeriodUs;
 
-  raw_[next_channel_] =
-      touchRead(static_cast<std::uint8_t>(kTouchCandidates[next_channel_].gpio));
+  raw_[next_channel_] = touchRead(static_cast<std::uint8_t>(kTouchCandidates[next_channel_].gpio));
   ++next_channel_;
   if (next_channel_ < kTouchCandidates.size()) {
     return false;
