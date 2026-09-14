@@ -1,8 +1,12 @@
 #include <unity.h>
 
+#include <array>
+
 #include <espsand/input/axis_transform.hpp>
 #include <espsand/input/button_gesture.hpp>
+#include <espsand/input/touch_normalizer.hpp>
 #include <espsand/io/interfaces.hpp>
+#include <espsand/io/null_touch_zones.hpp>
 #include <espsand/runtime/diagnostic_controller.hpp>
 
 namespace {
@@ -87,7 +91,125 @@ void test_diagnostic_controller_reset_and_next_mode() {
   controller.handle_button(espsand::io::ButtonEvent::kLongPress, 500);
   TEST_ASSERT_EQUAL_INT(static_cast<int>(espsand::runtime::DiagnosticMode::kPrimaryColours),
                         static_cast<int>(controller.mode()));
-  TEST_ASSERT_EQUAL_UINT32(0, controller.elapsed_ms(500));
+  controller.handle_button(espsand::io::ButtonEvent::kLongPress, 600);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(espsand::runtime::DiagnosticMode::kGravity),
+                        static_cast<int>(controller.mode()));
+  controller.handle_button(espsand::io::ButtonEvent::kLongPress, 700);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(espsand::runtime::DiagnosticMode::kTouchCharacterization),
+                        static_cast<int>(controller.mode()));
+  TEST_ASSERT_EQUAL_UINT32(0, controller.elapsed_ms(700));
+  controller.handle_button(espsand::io::ButtonEvent::kLongPress, 800);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(espsand::runtime::DiagnosticMode::kPixelSweep),
+                        static_cast<int>(controller.mode()));
+}
+
+std::array<std::uint32_t, espsand::io::kMaxTouchChannels> stable_touch_raw() {
+  std::array<std::uint32_t, espsand::io::kMaxTouchChannels> raw{};
+  raw[0] = 1000;
+  raw[1] = 1200;
+  raw[2] = 1400;
+  return raw;
+}
+
+espsand::io::TouchDiagnostics warm_touch_normalizer(espsand::input::TouchNormalizer& normalizer) {
+  auto raw = stable_touch_raw();
+  espsand::io::TouchDiagnostics diagnostics{};
+  for (int sample = 0; sample < 40; ++sample) {
+    raw[0] = static_cast<std::uint32_t>(1000 + ((sample % 3) - 1));
+    raw[1] = static_cast<std::uint32_t>(1200 + (((sample + 1) % 3) - 1));
+    raw[2] = static_cast<std::uint32_t>(1400 + (((sample + 2) % 3) - 1));
+    diagnostics = normalizer.update(raw, 3);
+  }
+  return diagnostics;
+}
+
+void test_touch_normalizer_tracks_idle_without_false_activation() {
+  espsand::input::TouchNormalizer normalizer;
+  normalizer.reset(3);
+  const auto diagnostics = warm_touch_normalizer(normalizer);
+
+  TEST_ASSERT_TRUE(diagnostics.ready);
+  TEST_ASSERT_FALSE(diagnostics.channels[0].active);
+  TEST_ASSERT_FALSE(diagnostics.channels[1].active);
+  TEST_ASSERT_FALSE(diagnostics.channels[2].active);
+  TEST_ASSERT_FLOAT_WITHIN(2.0F, 0.0F, diagnostics.common_mode_z);
+}
+
+void test_touch_normalizer_detects_local_positive_s3_touch() {
+  espsand::input::TouchNormalizer normalizer;
+  normalizer.reset(3);
+  warm_touch_normalizer(normalizer);
+
+  auto raw = stable_touch_raw();
+  raw[0] += 100;
+  const auto diagnostics = normalizer.update(raw, 3);
+
+  TEST_ASSERT_TRUE(diagnostics.channels[0].active);
+  TEST_ASSERT_TRUE(diagnostics.channels[0].z > 5.0F);
+  TEST_ASSERT_FALSE(diagnostics.channels[1].active);
+  TEST_ASSERT_FALSE(diagnostics.channels[2].active);
+}
+
+void test_touch_normalizer_rejects_equal_common_mode_shift() {
+  espsand::input::TouchNormalizer normalizer;
+  normalizer.reset(3);
+  warm_touch_normalizer(normalizer);
+
+  auto raw = stable_touch_raw();
+  raw[0] += 100;
+  raw[1] += 100;
+  raw[2] += 100;
+  const auto diagnostics = normalizer.update(raw, 3);
+
+  TEST_ASSERT_TRUE(diagnostics.common_mode_z > 10.0F);
+  TEST_ASSERT_FLOAT_WITHIN(1.0F, 0.0F, diagnostics.channels[0].z);
+  TEST_ASSERT_FLOAT_WITHIN(1.0F, 0.0F, diagnostics.channels[1].z);
+  TEST_ASSERT_FLOAT_WITHIN(1.0F, 0.0F, diagnostics.channels[2].z);
+  TEST_ASSERT_FALSE(diagnostics.channels[0].active);
+  TEST_ASSERT_FALSE(diagnostics.channels[1].active);
+  TEST_ASSERT_FALSE(diagnostics.channels[2].active);
+}
+
+void test_touch_gate_hysteresis_and_cooldown_bound_events() {
+  espsand::input::TouchGateConfig config{};
+  config.cooldown_samples = 4;
+  espsand::input::TouchZoneGate gate(config);
+
+  auto state = gate.update(6.0F);
+  TEST_ASSERT_TRUE(state.active);
+  TEST_ASSERT_TRUE(state.triggered);
+
+  state = gate.update(4.0F);
+  TEST_ASSERT_TRUE(state.active);
+  TEST_ASSERT_FALSE(state.triggered);
+
+  state = gate.update(2.0F);
+  TEST_ASSERT_FALSE(state.active);
+
+  state = gate.update(6.0F);
+  TEST_ASSERT_TRUE(state.active);
+  TEST_ASSERT_FALSE(state.triggered);
+
+  state = gate.update(2.0F);
+  TEST_ASSERT_FALSE(state.active);
+
+  state = gate.update(6.0F);
+  TEST_ASSERT_TRUE(state.active);
+  TEST_ASSERT_TRUE(state.triggered);
+}
+
+void test_null_touch_zones_are_cleanly_unavailable() {
+  espsand::io::NullTouchZones touch;
+  espsand::io::TouchFrame frame{};
+  frame.available = true;
+  frame.cap_a = 1.0F;
+
+  TEST_ASSERT_FALSE(touch.poll(12345, frame));
+  TEST_ASSERT_FALSE(frame.available);
+  TEST_ASSERT_EQUAL_UINT64(12345, frame.timestamp_us);
+  TEST_ASSERT_FLOAT_WITHIN(0.0001F, 0.0F, frame.cap_a);
+  TEST_ASSERT_FALSE(touch.status().hardware_available);
+  TEST_ASSERT_EQUAL_UINT8(0, touch.diagnostics().channel_count);
 }
 
 class FakeClock final : public espsand::io::IClock {
@@ -155,6 +277,11 @@ int main(int, char**) {
   RUN_TEST(test_bounce_does_not_become_a_press);
   RUN_TEST(test_axis_projection_is_explicit_and_rotatable);
   RUN_TEST(test_diagnostic_controller_reset_and_next_mode);
+  RUN_TEST(test_touch_normalizer_tracks_idle_without_false_activation);
+  RUN_TEST(test_touch_normalizer_detects_local_positive_s3_touch);
+  RUN_TEST(test_touch_normalizer_rejects_equal_common_mode_shift);
+  RUN_TEST(test_touch_gate_hysteresis_and_cooldown_bound_events);
+  RUN_TEST(test_null_touch_zones_are_cleanly_unavailable);
   RUN_TEST(test_hardware_interfaces_accept_host_fakes);
   return UNITY_END();
 }

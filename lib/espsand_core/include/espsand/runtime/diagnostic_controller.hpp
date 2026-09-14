@@ -10,6 +10,7 @@ enum class DiagnosticMode : std::uint8_t {
   kPixelSweep,
   kPrimaryColours,
   kGravity,
+  kTouchCharacterization,
   kCount,
 };
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 
 #include <espsand/input/axis_transform.hpp>
@@ -24,9 +26,32 @@ inline constexpr EvidenceStatus kProductFamilyStatus = EvidenceStatus::kKnown;
 inline constexpr PinFact kMatrixData{"matrix_data", 14, EvidenceStatus::kKnown};
 inline constexpr PinFact kImuSda{"imu_sda", 11, EvidenceStatus::kKnown};
 inline constexpr PinFact kImuScl{"imu_scl", 12, EvidenceStatus::kKnown};
-inline constexpr PinFact kImuInt1{"imu_int1", 10, EvidenceStatus::kAssumed};
-inline constexpr PinFact kImuInt2{"imu_int2", 13, EvidenceStatus::kAssumed};
+inline constexpr PinFact kImuInt1{"imu_int1", 10, EvidenceStatus::kKnown};
+inline constexpr PinFact kImuInt2{"imu_int2", 13, EvidenceStatus::kKnown};
 inline constexpr PinFact kBootButton{"boot_button", 0, EvidenceStatus::kKnown};
+inline constexpr PinFact kUsbDm{"usb_dm", 19, EvidenceStatus::kKnown};
+inline constexpr PinFact kUsbDp{"usb_dp", 20, EvidenceStatus::kKnown};
+
+// The official Waveshare schematic shows GPIO1..GPIO7 routed directly to the exposed expansion
+// header without another onboard load. All seven are native ESP32-S3 touch channels. GPIO8/9 are
+// touch-capable in silicon but are not exposed on this board's header. GPIO10..GPIO14 are consumed
+// by the QMI8658 and RGB matrix and are therefore intentionally excluded.
+inline constexpr std::array<PinFact, 7> kTouchCandidates{{
+    {"touch_candidate_1", 1, EvidenceStatus::kKnown},
+    {"touch_candidate_2", 2, EvidenceStatus::kKnown},
+    {"touch_candidate_3", 3, EvidenceStatus::kKnown},
+    {"touch_candidate_4", 4, EvidenceStatus::kKnown},
+    {"touch_candidate_5", 5, EvidenceStatus::kKnown},
+    {"touch_candidate_6", 6, EvidenceStatus::kKnown},
+    {"touch_candidate_7", 7, EvidenceStatus::kKnown},
+}};
+
+// Characterization starts with two physically contiguous three-pin clusters along the exposed
+// GPIO edge. These are diagnostic virtual zones only until the owner's sensitivity capture proves
+// they are useful. Candidate index 3 (GPIO4) is deliberately left between them as a centre probe.
+inline constexpr std::array<std::size_t, 3> kProvisionalTouchZoneA{{4, 5, 6}}; // GPIO5..7
+inline constexpr std::array<std::size_t, 3> kProvisionalTouchZoneB{{0, 1, 2}}; // GPIO1..3
+inline constexpr bool kTouchZonesConfigured = false;
 
 inline constexpr std::uint8_t kQmiPreferredAddress = 0x6B;
 inline constexpr std::uint8_t kQmiAlternateAddress = 0x6A;
