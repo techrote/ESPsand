@@ -145,7 +145,7 @@ void test_touch_normalizer_detects_local_positive_s3_touch() {
   const auto diagnostics = normalizer.update(raw, 3);
 
   TEST_ASSERT_TRUE(diagnostics.channels[0].active);
-  TEST_ASSERT_GREATER_THAN_FLOAT(5.0F, diagnostics.channels[0].z);
+  TEST_ASSERT_TRUE(diagnostics.channels[0].z > 5.0F);
   TEST_ASSERT_FALSE(diagnostics.channels[1].active);
   TEST_ASSERT_FALSE(diagnostics.channels[2].active);
 }
@@ -161,7 +161,7 @@ void test_touch_normalizer_rejects_equal_common_mode_shift() {
   raw[2] += 100;
   const auto diagnostics = normalizer.update(raw, 3);
 
-  TEST_ASSERT_GREATER_THAN_FLOAT(10.0F, diagnostics.common_mode_z);
+  TEST_ASSERT_TRUE(diagnostics.common_mode_z > 10.0F);
   TEST_ASSERT_FLOAT_WITHIN(1.0F, 0.0F, diagnostics.channels[0].z);
   TEST_ASSERT_FLOAT_WITHIN(1.0F, 0.0F, diagnostics.channels[1].z);
   TEST_ASSERT_FLOAT_WITHIN(1.0F, 0.0F, diagnostics.channels[2].z);
@@ -189,8 +189,8 @@ void test_touch_gate_hysteresis_and_cooldown_bound_events() {
   TEST_ASSERT_TRUE(state.active);
   TEST_ASSERT_FALSE(state.triggered);
 
-  gate.update(2.0F);
-  gate.update(2.0F);
+  state = gate.update(2.0F);
+  TEST_ASSERT_FALSE(state.active);
   state = gate.update(6.0F);
   TEST_ASSERT_TRUE(state.triggered);
 }
