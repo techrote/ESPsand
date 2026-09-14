@@ -51,7 +51,10 @@ TouchSemanticState TouchSemanticInterpreter::update(const io::TouchDiagnostics& 
       continue;
     }
 
-    const float position = count <= 1 ? 0.5F : static_cast<float>(index) / static_cast<float>(count - 1);
+    float position = 0.5F;
+    if (count > 1) {
+      position = static_cast<float>(index) / static_cast<float>(count - 1);
+    }
     weight_sum += local_z;
     position_sum += local_z * position;
   }
