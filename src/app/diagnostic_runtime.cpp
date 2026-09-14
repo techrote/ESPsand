@@ -283,13 +283,16 @@ void DiagnosticRuntime::emit_touch_telemetry(std::uint64_t now_us) {
   int written = std::snprintf(
       line, sizeof(line),
       "touch t_ms=%llu hw=%u ready=%u zones=%u scans=%lu cm=%+.2f "
-      "pa=%.2f/%u pb=%.2f/%u pc=%.2f/%u",
+      "pa=%.2f/%u pb=%.2f/%u pc=%.2f/%u slider=%u/%.3f/%.2f noise=%.2f/%u",
       static_cast<unsigned long long>(now_us / 1000U), status.hardware_available ? 1U : 0U,
       touch.ready ? 1U : 0U, status.zones_configured ? 1U : 0U,
       static_cast<unsigned long>(status.sample_count), static_cast<double>(touch.common_mode_z),
       static_cast<double>(touch.provisional_a), touch.provisional_a_active ? 1U : 0U,
       static_cast<double>(touch.provisional_b), touch.provisional_b_active ? 1U : 0U,
-      static_cast<double>(touch.provisional_combo), touch.provisional_combo_active ? 1U : 0U);
+      static_cast<double>(touch.provisional_combo), touch.provisional_combo_active ? 1U : 0U,
+      touch.slider_active ? 1U : 0U, static_cast<double>(touch.slider_position),
+      static_cast<double>(touch.slider_strength), static_cast<double>(touch.noise_impulse),
+      touch.noise_event ? 1U : 0U);
 
   if (written < 0) {
     return;
