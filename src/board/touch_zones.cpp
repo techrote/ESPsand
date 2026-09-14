@@ -14,6 +14,7 @@ bool TouchZones::begin() {
   raw_ = {};
   next_channel_ = 0;
   next_channel_us_ = 0;
+  semantic_interpreter_.reset();
   zone_a_gate_.reset();
   zone_b_gate_.reset();
   combo_gate_.reset();
@@ -64,7 +65,7 @@ bool TouchZones::poll(std::uint64_t now_us, io::TouchFrame& frame) {
   diagnostics_ = normalizer_.update(raw_, kTouchCandidates.size());
   ++status_.sample_count;
   status_.last_sample_us = now_us;
-  update_provisional_groups(frame, now_us);
+  update_semantics(frame, now_us);
   return true;
 }
 
@@ -84,9 +85,10 @@ float TouchZones::group_max(const std::array<std::size_t, 3>& indices) const {
   return value;
 }
 
-void TouchZones::update_provisional_groups(io::TouchFrame& frame, std::uint64_t now_us) {
+void TouchZones::update_semantics(io::TouchFrame& frame, std::uint64_t now_us) {
   frame.timestamp_us = now_us;
   if (!diagnostics_.ready) {
+    semantic_interpreter_.reset();
     zone_a_gate_.reset();
     zone_b_gate_.reset();
     combo_gate_.reset();
@@ -101,8 +103,9 @@ void TouchZones::update_provisional_groups(io::TouchFrame& frame, std::uint64_t 
   const auto b = zone_b_gate_.update(b_z);
   // Physical ES-003 evidence found occasional local-channel false activity but a strong, smooth
   // edge-pinch response in the common-mode channel. Keep combo semantics strictly common-mode so
-  // local amber flashes cannot become product events.
+  // local amber flashes cannot become product combo events.
   const auto combo = combo_gate_.update(common_z);
+  const auto direct = semantic_interpreter_.update(diagnostics_);
 
   diagnostics_.provisional_a = a.intensity;
   diagnostics_.provisional_b = b.intensity;
@@ -110,6 +113,11 @@ void TouchZones::update_provisional_groups(io::TouchFrame& frame, std::uint64_t 
   diagnostics_.provisional_a_active = a.active;
   diagnostics_.provisional_b_active = b.active;
   diagnostics_.provisional_combo_active = combo.active;
+  diagnostics_.slider_active = direct.slider_active;
+  diagnostics_.slider_position = direct.slider_position;
+  diagnostics_.slider_strength = direct.slider_strength;
+  diagnostics_.noise_impulse = direct.noise_impulse;
+  diagnostics_.noise_event = direct.noise_event;
 
   frame.available = status_.zones_configured;
   if (!frame.available) {
@@ -126,6 +134,17 @@ void TouchZones::update_provisional_groups(io::TouchFrame& frame, std::uint64_t 
   if (kTouchComboConfigured) {
     frame.cap_combo = combo.intensity;
     frame.event_combo = combo.triggered;
+  }
+
+  if (kTouchSliderConfigured) {
+    frame.slider_active = direct.slider_active;
+    frame.slider_position = direct.slider_position;
+    frame.slider_strength = direct.slider_strength;
+  }
+
+  if (kTouchNoiseConfigured) {
+    frame.noise_impulse = direct.noise_impulse;
+    frame.noise_event = direct.noise_event;
   }
 }
 
