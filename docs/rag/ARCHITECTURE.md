@@ -1,16 +1,10 @@
 # ESPsand v0 firmware architecture
 
-## Accepted foundation toolchain
+## Toolchain
 
-ES-001 selects **PlatformIO** as the v0 build/test orchestrator:
+Accepted foundation: PlatformIO with pinned Espressif32 + Arduino for firmware, plus a pinned native PlatformIO environment for host tests. See `platformio.ini` and `requirements-dev.txt` for exact versions.
 
-- PlatformIO Core `6.1.18` via `requirements-dev.txt`;
-- Espressif32 platform `6.10.0`;
-- Arduino framework for the embedded foundation;
-- native platform `1.2.1` + Unity for host tests;
-- clang-format `18.1.8`.
-
-The compile target uses PlatformIO's generic `esp32-s3-devkitc-1` board definition until the exact physical ESPsand board/revision is verified. This is a reproducible compiler target, not a claim that the owner's board is a DevKitC. Physical facts are tracked in `docs/hardware/BOARD_PROFILE.md`.
+The embedded compile profile is intentionally generic ESP32-S3; `docs/hardware/BOARD_PROFILE.md` is the hardware source of truth for the actual Waveshare ESP32-S3-Matrix target.
 
 ## Layering
 
@@ -31,50 +25,71 @@ renderer
   logical world → 8×8 HDR-ish frame → power-aware output
 ```
 
-Dependencies should point inward. The pure model must not include Arduino headers, GPIO numbers or LED-driver APIs.
+Dependencies point inward. The pure model and board-independent input state machines contain no Arduino headers, GPIO numbers or LED-driver APIs.
 
-## Repository shape
-
-The foundation establishes:
+## Current repository shape
 
 ```text
 platformio.ini
 src/
   main.cpp
+  app/
+    diagnostic_runtime.*
   board/
+    board_profile.hpp
+    boot_button.*
+    diagnostics.*
+    matrix_output.*
+    monotonic_clock.hpp
+    qmi8658_imu.*
+    serial_diagnostics.*
 lib/
   espsand_core/
-    include/
+    include/espsand/
+      input/
+      io/
+      runtime/
     src/
 test/
   test_foundation/
-tools/
-  ci.py
-  format.py
+  test_board_logic/
 docs/
   hardware/
   rag/
-.github/
-  workflows/
 ```
 
-Later issues may add `app/`, `input/`, `render/`, `scenes/`, world/material/reaction/biology modules and fixtures while preserving the hardware/pure-core seam.
+Later material/scene modules should extend this shape without crossing the board/core seam.
 
-## Timing model
+## ES-002 runtime rates
 
-Prefer independent rates with bounded non-blocking work:
+The accepted board-I/O diagnostic baseline uses independent bounded schedules:
 
-- IMU acquisition: ~200 Hz or best stable rate supported by driver/board;
-- touch acquisition: ~50–100 Hz;
-- fixed simulation tick: initially 60 or 120 Hz, benchmarked rather than assumed;
-- LED presentation: 60 Hz target;
-- serial diagnostics: throttled, never frame-critical.
+- QMI8658 configured for 1 kHz accel/gyro ODR, polled at approximately 200 Hz;
+- matrix presentation target approximately 60 Hz;
+- serial runtime telemetry 1 Hz;
+- BOOT sampled every main-loop iteration through a host-tested debounce/gesture state machine.
 
-Use a fixed-step accumulator for simulation. Clamp catch-up work so a transient stall does not create an unbounded spiral.
+Scheduling uses monotonic microsecond time and skips missed periods rather than performing unlimited catch-up work.
+
+Later simulation work may select 60 or 120 Hz fixed-step model timing after profiling. Hardware poll rates must not silently become simulation semantics.
+
+## Hardware abstraction contracts
+
+The pure core defines narrow interfaces/types for:
+
+- `IClock` — monotonic microseconds;
+- `IImu` — timestamped raw + scaled accel/gyro and health/status;
+- `IButton` — semantic short/long events;
+- `IMatrixOutput` — prepared 8×8 RGB frame plus requested global brightness;
+- `IDiagnostics` — non-critical telemetry sink.
+
+Host tests can implement these interfaces without ESP32 headers. Board adapters under `src/board/` are the only layer allowed to know concrete GPIOs or Arduino peripheral APIs.
+
+`MatrixOutput` is already the mandatory physical LED gateway: it owns the NeoPixel object and clamps every frame to the current global development ceiling. Scene code must never instantiate or call the LED driver directly.
 
 ## Determinism
 
-The model owns an explicit seeded PRNG. Do not use hidden global randomness inside material or scene rules.
+The future model owns an explicit seeded PRNG. Do not use hidden global randomness inside material or scene rules.
 
 Given:
 
@@ -107,18 +122,18 @@ A scene should **not** reimplement gravity transport, thermal diffusion, generic
 - Ensure reaction chains have per-tick budgets so they cannot recursively explode.
 - Watchdog friendliness is a design requirement.
 - Diagnostics should expose dropped/capped work rather than silently hiding overload.
+- Missing IMU is a degraded mode, not a crash condition.
 
 ## Serial diagnostics
 
-Development output should be machine-readable enough to support capture. The ES-001 foundation already emits a periodic safe hardware/profile probe without driving unresolved peripheral pins. Later runtime diagnostics should add:
+Development output should be machine-readable enough to support capture. Include at minimum:
 
-- firmware version/git identifier if available;
-- current scene and seed;
-- measured render/simulation rates;
-- update-time maxima/averages;
-- IMU health and normalized gravity vector;
-- detected button/tap/shake/touch events;
-- reaction/event overflow counters;
+- firmware/runtime identity;
+- current diagnostic/scene mode;
+- measured rates and update-time maxima;
+- IMU health, detected I2C address and scaled vectors;
+- detected button/tap/shake/touch events as those layers exist;
+- reaction/event overflow counters once the model exists;
 - current global brightness/power limiter state.
 
 Human-readable compact lines are sufficient for v0; a rigid binary protocol is unnecessary.

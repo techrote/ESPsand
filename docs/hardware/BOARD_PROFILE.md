@@ -4,9 +4,9 @@ This file is the hardware source of truth for ESPsand v0.
 
 Each field is explicitly classified as:
 
-- **KNOWN** — supported directly by owner-provided identification or accepted evidence;
-- **ASSUMED** — a reasonable working value from the identified product family, but not yet confirmed on the owner's exact boards;
-- **NEEDS_PHYSICAL_VALIDATION** — do not depend on this value until evidence is captured.
+- **KNOWN** — supported directly by owner-provided identification or accepted vendor evidence;
+- **ASSUMED** — a reasonable working value for the identified product, but not yet confirmed on the owner's exact boards;
+- **NEEDS_PHYSICAL_VALIDATION** — do not treat this as measured behaviour until evidence is captured.
 
 ## Identity and compute
 
@@ -14,23 +14,26 @@ Each field is explicitly classified as:
 | --- | --- | --- |
 | Owner inventory | KNOWN | Three target boards are physically available. |
 | Product | KNOWN | Waveshare `ESP32-S3-Matrix`, SKU 27119. Owner supplied the target listing plus a matching front/rear product image; Waveshare's official documentation identifies SKU 27119 as `ESP32-S3-Matrix`. |
-| PCB revision marking | NEEDS_PHYSICAL_VALIDATION | Product identity is now resolved, but capture any revision/date/lot marking visible on the actual boards before assuming all revisions route identically. |
-| MCU family | KNOWN | ESP32-S3. |
-| CPU/core count | KNOWN | Xtensa 32-bit LX7 dual-core, up to 240 MHz, per official Waveshare product documentation for SKU 27119. |
-| Flash | KNOWN | 4 MB, per official Waveshare product documentation for SKU 27119. Runtime probe should still confirm the physical units. |
-| PSRAM | NEEDS_PHYSICAL_VALIDATION | Waveshare's feature list does not advertise PSRAM for SKU 27119. Runtime probe reports detected size; do not assume it exists. |
-| SRAM / ROM | KNOWN | Vendor lists 512 KB SRAM, 384 KB ROM, 16 KB RTC SRAM. |
+| PCB revision marking | NEEDS_PHYSICAL_VALIDATION | Capture any revision/date/lot marking visible on the actual boards before assuming all revisions route identically. |
+| MCU | KNOWN | ESP32-S3; Waveshare's product page specifies ESP32-S3FH4R2 for SKU 27119. |
+| CPU/core count | KNOWN | Xtensa 32-bit LX7 dual-core, up to 240 MHz. |
+| Flash | KNOWN | 4 MB. Runtime probe should still confirm the physical units. |
+| PSRAM | KNOWN (product specification) | Waveshare's product page specifies 2 MB PSRAM for SKU 27119. Runtime probe remains the physical-unit confirmation. |
+| SRAM / ROM | KNOWN | Vendor documentation lists 512 KB SRAM, 384 KB ROM, 16 KB RTC SRAM. |
 | Main regulator | KNOWN | ME6217C33M5G LDO; vendor identifies 800 mA maximum regulator current. This is **not** a safe continuous LED current budget. |
 
-Primary product reference:
-`https://docs.waveshare.com/ESP32-S3-Matrix`
+Primary references:
+
+- `https://docs.waveshare.com/ESP32-S3-Matrix`
+- `https://www.waveshare.com/esp32-s3-matrix.htm`
+- `https://docs.waveshare.com/ESP32-S3-Matrix/Arduino`
 
 Owner target listing:
 `https://www.aliexpress.com/item/1005006962940633.html`
 
 ## Onboard resources confirmed for the target product
 
-The supplied target image and official Waveshare page agree on the following onboard resources:
+The supplied target image and official Waveshare material agree on the following onboard resources:
 
 - USB Type-C connector;
 - 8×8 / 64-pixel RGB LED matrix;
@@ -40,102 +43,90 @@ The supplied target image and official Waveshare page agree on the following onb
 - QMI8658/QMI8658C-family QST 6-axis accelerometer + gyroscope;
 - ESP32-S3 MCU;
 - RGB-matrix `Dout` pad for extending the addressable chain;
-- 17 GPIOs brought out around the board edges according to Waveshare's product description.
+- 17 GPIOs brought out around the board edges.
 
-The exact PCB routing and revision-specific electrical details still belong to the schematic/physical-validation layer below.
+## Pin/profile map
 
-## Provisional pin/profile map
+| Signal | Status | Current value / evidence |
+| --- | --- | --- |
+| RGB matrix data | KNOWN | GPIO14. Waveshare's official Arduino example defines `PIN_NEOPIXEL 14`. |
+| QMI8658 SDA | ASSUMED | GPIO11; supported by public board-specific examples/community pinouts, pending vendor-schematic or physical confirmation. |
+| QMI8658 SCL | ASSUMED | GPIO12; same evidence boundary as SDA. |
+| QMI8658 INT1 | ASSUMED | GPIO10. ES-002 does not require interrupts. |
+| QMI8658 INT2 | ASSUMED | GPIO13. ES-002 does not require interrupts. |
+| BOOT button | ASSUMED | GPIO0. Strong ESP32-S3/Waveshare-family expectation; physical/schematic confirmation remains pending. |
+| BOOT active level | ASSUMED | active-low with internal pull-up. |
+| Native USB D- / D+ | ASSUMED | GPIO19 / GPIO20; never repurpose while USB is required. |
 
-These pins match public Waveshare ESP32-S3-Matrix examples/community pinouts closely enough to seed later diagnostics. They are **not yet physically verified on the owner's boards**.
-
-| Signal | Status | Provisional value |
-| --- | --- | ---: |
-| RGB matrix data | ASSUMED | GPIO14 |
-| QMI8658 SDA | ASSUMED | GPIO11 |
-| QMI8658 SCL | ASSUMED | GPIO12 |
-| QMI8658 INT1 | ASSUMED | GPIO10 |
-| QMI8658 INT2 | ASSUMED | GPIO13 |
-| BOOT button | ASSUMED | GPIO0 |
-| BOOT active level | ASSUMED | active-low |
-| Native USB D- / D+ | ASSUMED | GPIO19 / GPIO20; never repurpose while USB is required |
-
-No ES-001 firmware drives any of these pins.
-
-Secondary reference for the provisional pin map:
+Secondary routing reference:
 `https://devices.esphome.io/devices/waveshare-esp32s3-matrix/`
 
-Waveshare publishes a schematic and example bundle from:
+Waveshare publishes schematic/example resources from:
 `https://docs.waveshare.com/ESP32-S3-Matrix/Resources-And-Documents`
-
-ES-002 should prefer those vendor resources over community pinouts when promoting any routing value to `KNOWN`, and should still preserve physical validation where behaviour depends on board revision.
 
 ## Matrix
 
 | Field | Status | Current value / evidence |
 | --- | --- | --- |
 | Geometry | KNOWN | 8×8 / 64 RGB emitters. |
-| Extension output | KNOWN | Onboard `Dout` pad is provided by the target product for extending the RGB matrix chain. |
-| Electrical protocol / exact LED part | ASSUMED | Addressable NeoPixel/WS281x-class chain; exact LED part still needs schematic/example confirmation. |
-| Data GPIO | ASSUMED | GPIO14. |
-| Pixel ordering / serpentine direction | NEEDS_PHYSICAL_VALIDATION | Resolve in ES-002 with a one-pixel-at-a-time diagnostic. |
-| RGB/GRB colour order | NEEDS_PHYSICAL_VALIDATION | Resolve in ES-002 using primary-colour frames. |
-| Practical brightness ceiling | NEEDS_PHYSICAL_VALIDATION | Vendor warns that excessive brightness rapidly heats the board and may damage it. Establish a conservative software limit only after measurement/soak. |
+| Extension output | KNOWN | Onboard `Dout` pad is provided for extending the RGB chain. |
+| Control interface | KNOWN | NeoPixel-compatible single-wire addressable chain; Waveshare's Arduino guide uses NeoPixel APIs on GPIO14. |
+| Exact LED silicon | NEEDS_PHYSICAL_VALIDATION | Not required by ES-002 if the NeoPixel-compatible timing is correct. |
+| Data GPIO | KNOWN | GPIO14. |
+| Pixel ordering | NEEDS_PHYSICAL_VALIDATION | ES-002 starts with linear row-major interpretation and provides a one-pixel sweep specifically to measure actual order. |
+| RGB/GRB byte order | NEEDS_PHYSICAL_VALIDATION | ES-002 starts with `NEO_GRB`; the primary-colour diagnostic is the acceptance test. |
+| Development brightness ceiling | ASSUMED policy | ES-002 clamps all output to 32/255 or less and uses 16/255 for full-panel primary-colour frames. This is intentionally conservative, not a certified safe limit. |
+| Practical sustained ceiling | NEEDS_PHYSICAL_VALIDATION | Vendor warns that excessive brightness can rapidly heat/damage the board. Establish later with measured soak evidence. |
 
-The vendor warning is not a numeric current budget. Do not infer a safe sustained brightness from the regulator's nominal 800 mA maximum rating.
+The nominal 800 mA LDO rating must not be treated as an LED current budget.
 
 ## IMU
 
 | Field | Status | Current value / evidence |
 | --- | --- | --- |
-| Device family | KNOWN | QMI8658/QMI8658C-family QST six-axis accelerometer + gyroscope on the target product. |
+| Device family | KNOWN | QMI8658/QMI8658C-family QST six-axis accelerometer + gyroscope. |
 | SDA/SCL | ASSUMED | GPIO11 / GPIO12. |
-| I2C address | NEEDS_PHYSICAL_VALIDATION | Probe explicitly in ES-002; do not hard-code a claimed physical result here. |
-| INT1 / INT2 | ASSUMED | GPIO10 / GPIO13. |
-| WHO_AM_I / silicon identity | NEEDS_PHYSICAL_VALIDATION | Read through the IMU driver in ES-002. |
-| Matrix-relative axis orientation | NEEDS_PHYSICAL_VALIDATION | Place board in known orientations and record signed raw acceleration. |
-| Stable sample rate | NEEDS_PHYSICAL_VALIDATION | Measure on hardware once the driver exists. |
+| I2C address | NEEDS_PHYSICAL_VALIDATION | ES-002 probes `0x6B` first and `0x6A` second, then reports the detected address. |
+| Expected WHO_AM_I | ASSUMED from QMI8658 driver/spec lineage | `0x05`; ES-002 refuses to initialize a candidate address unless this value is read. |
+| INT1 / INT2 | ASSUMED | GPIO10 / GPIO13; unused by ES-002. |
+| Configuration used by ES-002 | IMPLEMENTED, awaiting physical validation | +/-8 g accelerometer and +/-512 dps gyro at 1 kHz sensor ODR with LPFs enabled; firmware polls at 200 Hz. |
+| Matrix-relative axis orientation | NEEDS_PHYSICAL_VALIDATION | ES-002 uses an explicit provisional identity XY transform and exposes raw/scaled values over serial. |
+| Stable sample rate | NEEDS_PHYSICAL_VALIDATION | Runtime telemetry reports measured successful poll rate; target is approximately 200 Hz. |
+
+The minimal ES-002 driver intentionally avoids a large sensor dependency: it probes WHO_AM_I, configures the small register subset needed for raw accel/gyro, and exposes both signed raw counts and scaled `g` / `dps` values.
 
 ## BOOT and RESET buttons
 
-The target product definitely has both BOOT and RESET buttons. Waveshare documents BOOT as the download-mode button used while resetting.
+The product has both BOOT and RESET buttons. Waveshare documents BOOT as the download-mode button used while resetting.
 
-`GPIO0` active-low remains an **ASSUMED electrical mapping** until the vendor schematic or ES-002 confirms it for this board revision. RESET is not a normal GPIO input; it should remain dedicated to reset behaviour.
+ES-002 treats BOOT as GPIO0 active-low **provisionally** and implements a pure, host-tested debounce/gesture state machine:
 
-ES-002 will implement debounced short/long BOOT semantics only after the pin is reconciled against the exact board profile.
+- <=600 ms stable press: short/reset event;
+- >=800 ms stable press: long/next-diagnostic event emitted once while held;
+- the 600–800 ms ambiguity band emits neither event;
+- long release never emits an additional short event.
+
+Physical confirmation of GPIO0/active-low remains required before those fields become `KNOWN`.
 
 ## Touch-capable candidates
 
-The ESP32-S3 has native touch channels on GPIO1–GPIO14. However, capability at the silicon does **not** mean the corresponding pad is free or physically useful on this board.
+The ESP32-S3 exposes native touch channels on GPIO1–GPIO14. Silicon capability does **not** mean a pad is free or physically useful on this PCB.
 
 Current status: **NEEDS_PHYSICAL_VALIDATION**.
 
-The target board exposes labelled edge GPIOs, making the no-added-components experiment plausible. If the provisional pin map is correct, GPIO10–GPIO14 are already consumed by QMI8658/matrix functions and must not be repurposed. GPIO1–GPIO9 are only *candidate silicon channels* until the exact routing is reconciled against the Waveshare schematic and ES-003 measurements.
+The target board exposes labelled edge GPIOs, making the no-added-components experiment plausible. If the current routing assumptions are correct, GPIO10–GPIO14 are consumed by QMI8658/matrix functions and must not be repurposed. GPIO1–GPIO9 remain candidate touch channels until ES-003 reconciles schematic routing and measures them.
 
-ES-003 owns empirical touch characterization and may conclude that component-free touch is not useful.
+## ES-002 physical validation evidence
 
-## Foundation runtime probe
+Flash the ES-002 diagnostic runtime using `docs/DEVELOPMENT.md`. Return the following evidence before promoting remaining assumptions:
 
-ES-001 adds a safe serial probe that touches no uncertain peripheral pin. Flash it using the procedure in `docs/DEVELOPMENT.md` and capture the complete probe block.
+1. complete startup probe block;
+2. `espsand.io start ...` line, especially detected IMU address / WHO_AM_I / revision;
+3. pixel-sweep observation: physical order of indices 0..63;
+4. primary-colour observation: whether requested red, green, blue appear correctly;
+5. raw/scaled IMU telemetry with the board held in at least face-up, face-down, left-edge-down, right-edge-down, USB-edge-down and opposite-edge-down orientations;
+6. BOOT short/long behaviour;
+7. reported IMU successful poll rate and any failure count;
+8. any visible PCB revision/date/lot marking.
 
-Minimum evidence to return:
-
-```text
-espsand.probe begin
-...
-chip.model=...
-chip.revision=...
-chip.cores=...
-chip.cpu_mhz=...
-memory.flash_bytes=...
-memory.psram_bytes=...
-...
-espsand.probe end
-```
-
-Also report:
-
-1. any PCB revision/date/lot text visible on the front or rear beyond the `ESP32-S3-Matrix` product marking;
-2. whether Windows/Linux enumerates the board as a USB serial device after flashing;
-3. the complete probe block above.
-
-Product identity no longer needs to be rediscovered: the v0 target is Waveshare `ESP32-S3-Matrix` SKU 27119. Remaining promotion from `ASSUMED`/`NEEDS_PHYSICAL_VALIDATION` to `KNOWN` should be based on vendor schematic/example evidence and/or actual-board measurements.
+Do not infer a sustained safe LED brightness from a short diagnostic run.
