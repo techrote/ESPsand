@@ -42,29 +42,36 @@ Scenes may interpret these differently. Examples:
 - moss/mites: scatter agents/seeds;
 - tracer plume: mix/stir scalar concentration.
 
-## Capacitive zones — tested board result
+## Capacitive edge input — tested board result
 
 The original goal was to obtain one or two broad interaction regions with **no added components** by exploiting unused native touch-capable ESP32-S3 GPIO pads/traces.
 
-ES-003 physically tested GPIO1..GPIO7 on the Waveshare ESP32-S3-Matrix. The bare-board result is **combo-only/common-mode useful**:
+ES-003 physically tested GPIO1..GPIO7 on the Waveshare ESP32-S3-Matrix. The bare-board result is useful but deliberately coarse:
 
-- swiping along the exposed GPIO1..7 edge produces a smooth local-response motion in diagnostics;
+- swiping along the exposed GPIO1..GPIO7 edge produces a smooth local-response motion in diagnostics;
 - a fingertip spans most or all of the edge, so individual-pad or clean two-zone operation is not reliable;
 - pinching along the PCB edge gives the strongest repeatable deliberate gesture;
 - common-mode magnitude tracks broad fingertip/PCB contact area well enough to provide a bounded intensity;
-- local channels can flash spuriously, so local A/B activity is not exposed as product input.
+- local channels can flash spuriously, so local A/B activity is not exposed as button-like product input.
 
-Therefore the accepted bare-board semantics are:
+The accepted bare-board semantics are therefore:
 
 - `cap_a = 0`, `event_a = false`;
 - `cap_b = 0`, `event_b = false`;
 - `cap_combo` = normalized common-mode edge-contact intensity;
 - `event_combo` = hysteretic/cooldown-gated deliberate edge-contact event;
-- baseline drift alone -> no event.
+- `slider_active` only when common mode is near diagnostic full scale **and at least two local channels are simultaneously active**;
+- `slider_position` = smoothed 0..1 weighted centroid of positive GPIO1..GPIO7 local response while the slider gate is active;
+- `slider_strength` = bounded broad-contact strength;
+- a strong isolated single-channel near-full excursion may produce an explicit bounded `noise_impulse`/`noise_event` input candidate.
+
+The slider is intentionally a coarse direct control rather than a precision touch UI. A scene may map it to spawn rate, reaction bias, injection position or another bounded parameter. Scene meaning is not fixed by the input layer.
+
+The isolated `noise_impulse` is also intentionally **not model randomness**. If a scene uses it, the value enters the deterministic model through the recorded per-tick `InputFrame`; it must never silently perturb the model PRNG. This preserves exact replay while allowing genuine hardware irregularity to influence a live run.
 
 This is not pressure sensing. Coupling can vary with contact area, grip, moisture, grounding and other environmental factors.
 
-False positives are acceptable only when bounded. Local diagnostic false activity must not change scenes, corrupt state, lock the runtime or create sustained maximum brightness. The product combo event path therefore uses common mode directly rather than local per-channel activity.
+False positives are acceptable only when bounded. Local diagnostic false activity must not change scenes, corrupt state, lock the runtime or create sustained maximum brightness.
 
 ### Characterization mode
 
@@ -74,10 +81,12 @@ Firmware provides a diagnostic mode/serial stream showing, per candidate touch c
 - adaptive baseline;
 - delta/normalized delta;
 - estimated noise;
-- event state;
-- common-mode estimate.
+- local active state;
+- common-mode estimate;
+- slider active/position/strength;
+- isolated noise impulse/event.
 
-Local GPIO1..GPIO7 diagnostics remain useful for research and future coating/recalibration even though the current product mapping is combo-only.
+Local GPIO1..GPIO7 diagnostics remain useful for research and future coating/recalibration even though A/B buttons are disabled.
 
 ### Normalization
 
@@ -91,4 +100,4 @@ Adapt baseline slowly when idle; freeze or slow baseline adaptation during stron
 
 ## Event injection
 
-Scenes consume a per-tick `InputFrame` or equivalent containing normalized continuous fields and edge-triggered events. Tests should be able to construct this structure without hardware.
+Scenes consume a per-tick `InputFrame` or equivalent containing normalized continuous fields and edge-triggered events. Tests should be able to construct this structure without hardware. Hardware-originated irregularity such as `noise_impulse` is deterministic once captured in that input sequence.
