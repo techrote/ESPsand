@@ -7,7 +7,11 @@
 
 namespace espsand::board {
 
-MatrixOutput::MatrixOutput() : strip_(io::kMatrixPixels, kMatrixData.gpio, NEO_GRB + NEO_KHZ800) {}
+// Physical ES-002 colour calibration on the owner's Waveshare ESP32-S3-Matrix showed that
+// logical red/green were swapped when this adapter used NEO_GRB: the requested
+// red -> green -> blue diagnostic appeared green -> red -> blue, and amber appeared lime.
+// The onboard chain therefore uses RGB byte order for ESPsand's logical Rgb contract.
+MatrixOutput::MatrixOutput() : strip_(io::kMatrixPixels, kMatrixData.gpio, NEO_RGB + NEO_KHZ800) {}
 
 void MatrixOutput::begin() {
   strip_.begin();
