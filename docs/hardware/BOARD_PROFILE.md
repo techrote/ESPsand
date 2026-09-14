@@ -136,15 +136,15 @@ The ESP32-S3 has native touch sensing on GPIO1–GPIO14, but board routing deter
 
 Waveshare's official schematic plus the physical edge labels establish the no-component characterization set:
 
-| GPIO | Routing/capability status | ES-003 use |
+| GPIO | Routing/capability status | ES-003 result |
 | ---: | --- | --- |
-| 1 | KNOWN: exposed header, native touch | candidate |
-| 2 | KNOWN: exposed header, native touch | candidate |
-| 3 | KNOWN: exposed header, native touch | candidate |
-| 4 | KNOWN: exposed header, native touch | candidate / centre probe |
-| 5 | KNOWN: exposed header, native touch | candidate |
-| 6 | KNOWN: exposed header, native touch | candidate |
-| 7 | KNOWN: exposed header, native touch | candidate |
+| 1 | KNOWN: exposed header, native touch | diagnostic local response only |
+| 2 | KNOWN: exposed header, native touch | diagnostic local response only |
+| 3 | KNOWN: exposed header, native touch | diagnostic local response only |
+| 4 | KNOWN: exposed header, native touch | diagnostic centre/local response only |
+| 5 | KNOWN: exposed header, native touch | diagnostic local response only |
+| 6 | KNOWN: exposed header, native touch | diagnostic local response only |
+| 7 | KNOWN: exposed header, native touch | diagnostic local response only |
 | 8–9 | Native touch in silicon but not exposed on this board header | not useful as bare-board electrodes |
 | 10 | QMI8658 INT1 | excluded |
 | 11 | QMI8658 SDA | excluded |
@@ -152,11 +152,21 @@ Waveshare's official schematic plus the physical edge labels establish the no-co
 | 13 | QMI8658 INT2 | excluded |
 | 14 | RGB matrix data | excluded |
 
-Therefore **GPIO1–GPIO7 are KNOWN safe routing candidates**, but their useful sensitivity remains **NEEDS_PHYSICAL_VALIDATION**. Safe routing is not evidence that a finger near a tiny bare pad produces a robust signal.
+GPIO1–GPIO7 are KNOWN safe touch candidates. Physical ES-003 testing resolved the bare-board capability as **combo-only/common-mode useful** rather than two independent zones.
 
-ES-003 firmware samples all seven candidates through Arduino-ESP32 `touchRead()`, maintains adaptive baseline/noise and common-mode-corrected normalized disturbance, and exposes a dedicated diagnostic stream. Characterization provisionally groups GPIO1–3 and GPIO5–7 as two coarse regions while GPIO4 remains a centre probe. These groups are deliberately not enabled as product `cap_a`/`cap_b` controls until physical evidence supports them.
+Observed behaviour on the tested board:
 
-See `docs/hardware/TOUCH_CHARACTERIZATION.md` for the exact bare-board procedure and decision criteria. `ITouchZones` has a clean unavailable fallback, so touch success is not a dependency for any ESPsand scene.
+- swiping along the GPIO1..7 edge moves the local-response indication smoothly across the matrix;
+- a normal fingertip spans most or all of the edge, so targeting one pad or cleanly separating two regions is impractical;
+- pinching along the PCB edge gives the strongest and most repeatable response;
+- the common-mode response tracks broad fingertip/PCB contact area well enough to provide a useful bounded intensity;
+- local normalized channels sometimes flash amber spuriously, so local A/B events are not exposed to scenes.
+
+The product mapping is therefore `cap_combo`/`event_combo` only. It uses the common-mode channel directly; local GPIO1..7 activity remains diagnostic and cannot directly trigger a product capacitive event. `cap_a` and `cap_b` remain zero on this board profile.
+
+This is not a force or pressure measurement. Contact area, grip, moisture, grounding and other environmental effects can all change capacitive coupling.
+
+See `docs/hardware/TOUCH_CHARACTERIZATION.md` for the detailed evidence boundary. The `NullTouchZones` adapter remains available so no scene depends on touch success.
 
 ## Radio / thermal policy
 
@@ -176,16 +186,16 @@ The board bring-up has established:
 - QMI8658 communicates on GPIO11/GPIO12 at `0x6B`, WHO_AM_I `0x05`, revision `0x7C`;
 - approximately 180 Hz IMU polling with zero captured read failures;
 - BOOT GPIO0 active-low short/long handling;
-- corrected in-plane gravity transform `x=-raw_y`, `y=+raw_x`.
+- corrected in-plane gravity transform `x=-raw_y`, `y=+raw_x`;
+- bare-board GPIO1..7 capacitive sensing is useful as a deliberate edge-pinch/common-mode gesture, while reliable local A/B discrimination is not supported.
 
 The PlatformIO monitor may briefly report `ClearCommError` / `PermissionError(13)` while native USB re-enumerates, then reconnect to the same COM port. A reconnect followed by steady telemetry is not a firmware failure.
 
 ## Remaining physical evidence
 
-1. ES-003 bare-board touch sensitivity, spatial discrimination and false-positive capture on GPIO1–GPIO7;
-2. six controlled static poses to complete raw X/Y/Z -> USB/SIDE/FACE mapping;
-3. visible PCB revision/date/lot marking if present;
-4. sustained thermal/current evidence for practical LED brightness ceilings;
-5. whether the single previously observed TG0 watchdog reset recurs under normal operation.
+1. six controlled static poses to complete raw X/Y/Z -> USB/SIDE/FACE mapping;
+2. visible PCB revision/date/lot marking if present;
+3. sustained thermal/current evidence for practical LED brightness ceilings;
+4. whether the single previously observed TG0 watchdog reset recurs under normal operation.
 
 Do not infer a sustained safe LED brightness from short diagnostics.
