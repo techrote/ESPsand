@@ -20,6 +20,10 @@ def main() -> int:
     run("format", [python, "tools/format.py", "--check"])
     run("host tests", [python, "-m", "platformio", "test", "-e", "native"])
     run("ESP32-S3 firmware compile", [python, "-m", "platformio", "run", "-e", "esp32s3"])
+    run(
+        "ESP32-S3 minimal bringup compile",
+        [python, "-m", "platformio", "run", "-e", "esp32s3_bringup"],
+    )
     return 0
 
 
