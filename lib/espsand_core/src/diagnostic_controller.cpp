@@ -36,6 +36,8 @@ const char* diagnostic_mode_name(DiagnosticMode mode) {
     return "primary_colours";
   case DiagnosticMode::kGravity:
     return "gravity";
+  case DiagnosticMode::kTouchCharacterization:
+    return "touch_characterization";
   case DiagnosticMode::kCount:
     break;
   }
