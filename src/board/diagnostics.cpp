@@ -5,6 +5,7 @@
 #include <espsand/core/foundation.hpp>
 
 #include "board_profile.hpp"
+#include "power_policy.hpp"
 
 namespace espsand::board {
 namespace {
@@ -42,6 +43,13 @@ void print_foundation_probe() {
   Serial.printf("memory.flash_bytes=%u\n", ESP.getFlashChipSize());
   Serial.printf("memory.psram_bytes=%u\n", ESP.getPsramSize());
   Serial.printf("memory.heap_bytes=%u\n", ESP.getHeapSize());
+
+  const auto& power = power_policy_status();
+  Serial.printf(
+      "power.policy applied=%u wifi_off=%u bt_off=%u bt_mem_released=%u wifi_err=%d bt_err=%d\n",
+      power.applied ? 1U : 0U, power.wifi_off ? 1U : 0U, power.bluetooth_off ? 1U : 0U,
+      power.bluetooth_memory_released ? 1U : 0U, power.wifi_error, power.bluetooth_error);
+  Serial.println("power.keep usb_serial_jtag=on imu=on watchdogs=on brownout=on psram=on");
 
   print_pin_fact(kMatrixData);
   print_pin_fact(kImuSda);
