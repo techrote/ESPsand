@@ -49,19 +49,36 @@ With the touch-characterization page active, the owner physically observed:
 - an ordinary fingertip is wide enough to influence most or all of the numbered edge at once, so reliably isolating an individual pad is impractical;
 - the strongest and most repeatable response occurs when **pinching along the PCB edge** rather than attempting point contact on one numbered pad;
 - the purple common-mode bar is strong during that edge pinch and visibly tracks the amount of fingertip area coupled to the PCB;
-- local common-mode-rejected channels occasionally flash amber spuriously, so their apparent position is useful diagnostically but is not reliable enough to expose as scene-changing A/B input.
+- local common-mode-rejected channels occasionally flash amber spuriously, often around the same time as correlated cyan/blue subthreshold motion;
+- occasional very fast single-column near-full excursions are present and are useful as an optional source of external live disturbance rather than as a precision control.
 
-This is a successful **combo-only/common-mode** outcome. The bare board provides a useful broad deliberate-contact gesture, but not trustworthy separate A/B buttons.
+The bare board therefore provides useful broad contact plus a coarse position signal during a strong pinch, but not trustworthy separate A/B buttons.
 
-The product mapping is therefore:
+## Accepted product mapping
 
 - `cap_a = 0`, `event_a = false` on this board profile;
 - `cap_b = 0`, `event_b = false` on this board profile;
 - `cap_combo` is the bounded common-mode edge-contact intensity;
 - `event_combo` is the hysteretic/cooldown-gated deliberate edge-contact event;
-- local per-channel values remain available in diagnostics for research and possible future coated-board recalibration.
+- a **coarse slider** becomes valid only when the common-mode signal is near diagnostic full scale and at least two local channels are simultaneously above their active threshold;
+- while valid, `slider_position` is the smoothed weighted centroid of positive local GPIO1..7 response, mapped left-to-right into 0..1;
+- `slider_strength` records the broad-contact strength;
+- a strong isolated single-channel near-full excursion may become a bounded `noise_impulse` and edge-triggered `noise_event`.
 
-Importantly, `cap_combo` is driven from common mode only. Occasional local amber false activity cannot directly become a product capacitive event.
+This gating intentionally matches the physical observation: the yellow local bars are trusted as direct position only while the purple broad-contact bar says a deliberate pinch is definitely happening. Random local amber flashes therefore do not become a slider by themselves.
+
+The isolated noise path is not PRNG state. It is an explicit external input. If a future scene uses it, deterministic replay records the impulse in that tick's `InputFrame`; the model remains deterministic for an identical input trace.
+
+## What the cyan/blue pixels mean
+
+On the matrix, columns 0 through 6 correspond to GPIO1 through GPIO7. The cyan/blue height is the positive **common-mode-corrected local normalized disturbance** `z`. It is real sensor telemetry, not decorative noise:
+
+- one or two pixels along the bottom usually mean small positive subthreshold variation;
+- several neighbouring columns rising together means a correlated but non-uniform capacitive disturbance remains after common-mode cancellation;
+- a column turns amber/yellow only after its local hysteretic threshold is crossed;
+- column 7 is purple and represents positive common-mode disturbance before local cancellation.
+
+The common-mode calculation is the mean normalized raw disturbance across all sampled channels. Local `z` subtracts most (currently 75%) of that common component. A broad but uneven physical or environmental disturbance can therefore move several cyan bars together while one more-sensitive column crosses into amber. The observed tendency for column 6 to flash amber while neighbouring cyan bars move is consistent with that signal path; it is not evidence of a separate hidden input.
 
 ## Diagnostic page
 
@@ -74,14 +91,12 @@ The normal firmware cycles through four diagnostic pages:
 
 Long-press BOOT three times from the initial pixel-sweep page to reach touch characterization.
 
-On the matrix, columns 0 through 6 correspond to GPIO1 through GPIO7. A cyan bar grows upward with positive common-mode-corrected disturbance and turns amber when the provisional local-channel threshold is active. Column 7 is the positive common-mode disturbance in purple. During initial warmup the seven channels show only dim bottom markers.
+During initial warmup the seven local channels show only dim bottom markers. After warmup, cyan bars show subthreshold local response, amber shows local threshold activity, and purple shows common mode.
 
-While the touch page is active, serial emits approximately 10 lines/s. After this physical decision, `zones=1` means a supported capacitive semantic input exists; it does **not** mean two local zones exist. The supported semantic is combo/common-mode only.
-
-Example shape:
+While the touch page is active, serial emits approximately 10 lines/s. Example shape:
 
 ```text
-touch t_ms=... hw=1 ready=1 zones=1 scans=... cm=... pa=... pb=... pc=... ch1:... ch7:...
+touch t_ms=... hw=1 ready=1 zones=1 scans=... cm=... pa=... pb=... pc=... slider=1/0.42/1.00 noise=0.00/0 ch1:... ch7:...
 ```
 
 Fields:
@@ -93,6 +108,8 @@ Fields:
 - `cm`: normalized common-mode disturbance before local cancellation;
 - `pa`, `pb`: diagnostic-only provisional local-group intensities;
 - `pc`: combo/common-mode intensity and active state;
+- `slider`: active / position / broad-contact strength;
+- `noise`: isolated-noise impulse / edge-event state;
 - `r`: raw reading;
 - `b`: adaptive baseline;
 - `d`: raw minus baseline;
@@ -101,19 +118,18 @@ Fields:
 - `z`: common-mode-corrected local disturbance;
 - `a`: per-channel diagnostic active state.
 
-## Final ES-003 decision
+## Final capability decision
 
-The tested board satisfies ES-003 as **combo-only/common-mode useful**:
+The tested bare board supports:
 
-- no extra electrode or component is required;
-- a deliberate edge pinch gives a strong, smooth response;
-- response magnitude carries useful broad contact-area/coupling information;
-- local channel position is visually interesting but too coarse/noisy to promise individual-pad or two-zone operation;
-- false local amber activity is isolated from the product combo event path;
-- BOOT + IMU remain fully sufficient when capacitive input is ignored.
+- deliberate edge-pinch common-mode input;
+- coarse direct position during a sufficiently strong multi-channel pinch;
+- explicit bounded live irregularity from isolated fast local excursions;
+- diagnostic local-channel visualization;
+- no reliable individual-pad or two-button promise.
 
 This is intentionally not described as pressure sensing. Coupling depends on contact area, grip, moisture, grounding and other environmental factors as well as force.
 
 ## Coating note
 
-Future conformal coating changes electrode-to-finger geometry and dielectric properties. The adaptive baseline avoids factory absolute thresholds, but coating still requires repeating physical characterization. A coated board may make local-zone discrimination better or worse, so the current combo-only decision applies to the tested bare-board geometry.
+Future conformal coating changes electrode-to-finger geometry and dielectric properties. The adaptive baseline avoids factory absolute thresholds, but coating still requires repeating physical characterization. A coated board may make local-zone discrimination better or worse, so the current semantics apply to the tested bare-board geometry.

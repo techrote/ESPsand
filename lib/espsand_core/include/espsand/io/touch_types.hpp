@@ -29,6 +29,15 @@ struct TouchDiagnostics {
   bool provisional_a_active = false;
   bool provisional_b_active = false;
   bool provisional_combo_active = false;
+
+  // Physically supported coarse direct-control interpretation. Slider position is meaningful only
+  // while slider_active is true. The isolated noise signal is an explicit external input candidate,
+  // never hidden model randomness.
+  bool slider_active = false;
+  float slider_position = 0.5F;
+  float slider_strength = 0.0F;
+  float noise_impulse = 0.0F;
+  bool noise_event = false;
 };
 
 struct TouchFrame {
@@ -40,6 +49,12 @@ struct TouchFrame {
   bool event_a = false;
   bool event_b = false;
   bool event_combo = false;
+
+  bool slider_active = false;
+  float slider_position = 0.5F;
+  float slider_strength = 0.0F;
+  float noise_impulse = 0.0F;
+  bool noise_event = false;
 };
 
 struct TouchStatus {

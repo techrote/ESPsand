@@ -54,11 +54,19 @@ inline constexpr std::array<std::size_t, 3> kProvisionalTouchZoneA{{4, 5, 6}}; /
 inline constexpr std::array<std::size_t, 3> kProvisionalTouchZoneB{{0, 1, 2}}; // GPIO1..3
 inline constexpr bool kTouchLocalZonesConfigured = false;
 
-// A deliberate edge pinch produces a strong, smooth common-mode response whose magnitude tracks
-// broad fingertip/PCB contact area. ES-003 therefore exposes only the bounded combo/ambiguous
-// capacitive channel as a supported semantic input on the bare board.
+// A deliberate edge pinch produces a strong common-mode response. That remains the broad
+// combo/ambiguous capacitive semantic. A second, intentionally coarse direct-control interpretation
+// is allowed only when common mode is near diagnostic full scale and at least two local channels
+// are simultaneously active; their weighted centroid becomes a 0..1 slider position.
 inline constexpr bool kTouchComboConfigured = true;
-inline constexpr bool kTouchZonesConfigured = kTouchLocalZonesConfigured || kTouchComboConfigured;
+inline constexpr bool kTouchSliderConfigured = true;
+
+// Fast isolated single-channel full-height-ish excursions are preserved as an optional external
+// disturbance/noise impulse. This must enter deterministic simulation explicitly through
+// InputFrame; it is never folded into hidden model PRNG state.
+inline constexpr bool kTouchNoiseConfigured = true;
+inline constexpr bool kTouchZonesConfigured = kTouchLocalZonesConfigured || kTouchComboConfigured ||
+                                              kTouchSliderConfigured || kTouchNoiseConfigured;
 
 inline constexpr std::uint8_t kQmiPreferredAddress = 0x6B;
 inline constexpr std::uint8_t kQmiAlternateAddress = 0x6A;

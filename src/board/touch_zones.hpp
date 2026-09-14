@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include <espsand/input/touch_normalizer.hpp>
+#include <espsand/input/touch_semantics.hpp>
 #include <espsand/io/interfaces.hpp>
 
 namespace espsand::board {
@@ -20,9 +21,10 @@ private:
   static constexpr std::uint64_t kChannelPeriodUs = 4000;
 
   float group_max(const std::array<std::size_t, 3>& indices) const;
-  void update_provisional_groups(io::TouchFrame& frame, std::uint64_t now_us);
+  void update_semantics(io::TouchFrame& frame, std::uint64_t now_us);
 
   input::TouchNormalizer normalizer_{};
+  input::TouchSemanticInterpreter semantic_interpreter_{};
   input::TouchZoneGate zone_a_gate_{};
   input::TouchZoneGate zone_b_gate_{};
   input::TouchZoneGate combo_gate_{};
