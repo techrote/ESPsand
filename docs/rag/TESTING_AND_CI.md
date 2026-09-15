@@ -12,7 +12,7 @@ The repository's `python tools/ci.py` is the reproducible verification entry poi
 
 The pinned native PlatformIO environment compiles pure core code with C++17 plus `-Wall -Wextra -Wpedantic -Werror` and runs Unity tests.
 
-The current suite covers foundation/board/input logic plus the ES-004 deterministic substrate. ES-004 specifically verifies:
+The ES-004 deterministic substrate suite verifies:
 
 - the fixed 16×16/256-cell world, row-major access and boundary rejection;
 - centralized stable material IDs and material/mass accounting;
@@ -39,7 +39,22 @@ ES-005 adds renderer/output-policy tests for:
 - fail-dark zero-load policy;
 - randomized full-world render repeatability.
 
-Later milestones add transport conservation, density/buoyancy, heat, reactions and biology when those systems actually exist. Do not add placeholder assertions that imply unimplemented physics is validated.
+ES-006 adds shared-dynamics tests for:
+
+- exact tracked-mass conservation under whole-cell transport/swaps;
+- cardinal and rotated gravity movement;
+- water/oil density ordering and steam rise through liquid;
+- centralized distinct liquid mobility/viscosity values;
+- local pairwise heat exchange, bounded convergence and ambient loss;
+- centralized lava-water, sodium-like-water and oil-fire reaction products;
+- hard reaction-budget saturation with skipped/dropped candidates rather than recursive runaway;
+- finite fire-to-smoke lifetime with mass preserved;
+- separation of shake/motion/tap disturbance magnitude from low-frequency gravity direction;
+- duplicate full-model dynamics replay under repeated multi-axis normalized input sequences;
+- reset restoring the exact initial dynamics state;
+- 2,000 randomized dynamics ticks preserving valid material IDs, exact total mass and work-budget bounds.
+
+Later milestones add scene-specific fixed-seed vertical-slice traces and biology/tracer tests when those systems actually exist. Do not add placeholder assertions that imply unimplemented scene behavior is validated.
 
 ### 2. Firmware compile
 
@@ -48,17 +63,17 @@ CI compiles both:
 - the normal `esp32s3` firmware target;
 - the `esp32s3_bringup` minimal target.
 
-Both use the repository's pinned Espressif32/Arduino configuration and compile the shared core library. Project warnings are treated seriously; host-native core warnings are errors.
+Both use the repository's pinned Espressif32/Arduino configuration and compile the shared core library, including renderer/output-limiter and ES-006 dynamics sources. Project warnings are treated seriously; host-native core warnings are errors.
 
 ### 3. Formatting/static checks
 
 `tools/format.py --check` applies the repository `.clang-format` contract to C/C++ sources. Keep the quality-tool surface deliberately small and reproducible.
 
-## Deterministic traces — ES-004 contract
+## Deterministic traces
 
 Important model milestones keep compact fixtures containing seed/configuration, deterministic input frames, expected hashes and selected counters.
 
-`test/test_simulation_core/test_main.cpp` locks two foundational sequences:
+`test/test_simulation_core/test_main.cpp` locks two foundational ES-004 sequences:
 
 1. PCG32 seed 42, default stream, first six outputs:
 
@@ -85,7 +100,7 @@ The final tick also locks event-budget saturation at `used=2`, `dropped=1`.
 
 `Model::state_hash()` is a versioned FNV-1a 64 regression/replay identity over canonical explicit fields, including PRNG state and the row-major world. It is deliberately **not cryptographic** and must not be used as an integrity/authentication mechanism.
 
-An intentional model-semantic change may alter these fixtures. Update the fixture and explanatory documentation in the same PR; an unexplained hash drift is a regression.
+ES-006 leaves the original ES-004 hash fixture unchanged. `kDynamicsFixture` adds the dynamics schema discriminator and is exercised as a repeated duplicate-model hash trace under a deterministic gravity/shake/tap/spin sequence. A later dynamics semantic change must update the relevant schema/tests deliberately; unexplained replay drift is a regression.
 
 Renderer output is not part of the model state hash because rendering is a pure projection and cannot affect future model evolution. ES-005 tests byte-identical render frames directly instead.
 
@@ -103,9 +118,17 @@ Examples:
 - real frame rate and loop timing;
 - 30–60 minute or longer soak without resets.
 
-A remote agent may complete code and CI but must not claim one of these passed without user-provided or machine-collected board evidence. ES-004 itself changes only pure model contracts and does not introduce a new physical-board acceptance gate.
+A remote agent may complete code and CI but must not claim one of these passed without user-provided or machine-collected board evidence.
 
 ES-005 deliberately leaves its 32/255 hard brightness ceiling and 4096-unit aggregate PWM-load envelope `NEEDS_PHYSICAL_VALIDATION`. Automated tests prove limiter arithmetic and gateway integration; they do not prove a sustained electrical/thermal safety rating.
+
+ES-006 also leaves physical simulation timing pending because the current diagnostic runtime does not yet run a product material scene continuously. The exact later benchmark is:
+
+1. run the first vertical-slice scene at its chosen fixed simulation cadence;
+2. emit `sim_hz`, rolling/worst `max_tick_us`, render cadence, reaction/event `used/dropped`, and transport/reaction counts in 1 Hz telemetry;
+3. exercise all four gravity directions plus repeated shake/tap and active reactions for several minutes;
+4. verify no watchdog reset, unbounded backlog or catch-up loop occurs;
+5. use measured worst-case headroom, not host timing, when choosing the final fixed tick rate.
 
 ## Serial evidence
 
@@ -114,11 +137,12 @@ Diagnostics should make hardware validation easy to paste into an issue/PR. Pref
 ```text
 imu ok rate=198Hz g=(+0.03,+0.98) shake=0.02
 render fps=60.0 sim=120Hz max_tick_us=...
+work event=2/8 drop=0 reaction=3/8 drop=1 moves=27 reacts=3
 touch ch=... raw=... base=... z=...
 scene=lava_water seed=...
 ```
 
-Exact schema may differ. Model seed/hash/budget and output-limiter requested/applied/load diagnostics should be added as the runtime begins executing product simulation scenes.
+Exact schema may differ. Model seed/hash/budget, dynamics work and output-limiter requested/applied/load diagnostics should be added as the runtime begins executing product simulation scenes.
 
 ## PR checklist
 
