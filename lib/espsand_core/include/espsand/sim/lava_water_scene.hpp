@@ -25,8 +25,7 @@ public:
   void initialize(World& world, Pcg32& prng) const noexcept;
 
   LavaWaterSceneStats before_dynamics(World& world, Pcg32& prng, const InputFrame& input,
-                                      std::uint64_t tick,
-                                      WorkBudget& event_budget) const noexcept;
+                                      std::uint64_t tick, WorkBudget& event_budget) const noexcept;
 };
 
 } // namespace espsand::sim
