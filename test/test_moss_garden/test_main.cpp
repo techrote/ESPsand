@@ -266,17 +266,31 @@ void test_temporal_persistence_is_bounded_and_deterministic() {
   TEST_ASSERT_TRUE(a[0].g < a[0].r);
 }
 
-void test_slider_spawns_second_mite_near_selected_x_and_shake_scatter_is_bounded() {
+void test_slider_spawns_water_near_selected_x_and_shake_scatter_is_bounded() {
   Model touched(scene_config(SceneId::kMossGarden, 321U));
+  const std::uint16_t water_before = material_cells(touched.world(), MaterialId::kWater);
   InputFrame touch_frame{};
   touch_frame.slider_active = true;
   touch_frame.slider_position = 0.8F;
   touch_frame.slider_strength = 1.0F;
   touched.step(touch_frame);
-  const auto touched_state = touched.moss_garden_state();
-  TEST_ASSERT_EQUAL_UINT8(2U, touched_state.mite_count);
-  TEST_ASSERT_EQUAL_UINT16(1U, touched.moss_garden_stats().touch_mite_spawns);
-  TEST_ASSERT_TRUE(touched_state.mites[1].x >= 9U);
+
+  TEST_ASSERT_EQUAL_UINT8(1U, touched.moss_garden_state().mite_count);
+  TEST_ASSERT_EQUAL_UINT16(1U, touched.moss_garden_stats().rain_pulses);
+  TEST_ASSERT_TRUE(material_cells(touched.world(), MaterialId::kWater) > water_before);
+  TEST_ASSERT_TRUE(material_cells(touched.world(), MaterialId::kWater) <=
+                   espsand::sim::kProductMaterialCellLimit);
+
+  bool found_near_touch = false;
+  for (int y = 0; y <= 1; ++y) {
+    for (int x = 9; x <= 15; ++x) {
+      const auto* cell = touched.world().try_cell(x, y);
+      if (cell != nullptr && cell->material == MaterialId::kWater && cell->mass != 0U) {
+        found_near_touch = true;
+      }
+    }
+  }
+  TEST_ASSERT_TRUE(found_near_touch);
   TEST_ASSERT_TRUE(touched.tick_work_stats().events.used <= touched.tick_work_stats().events.limit);
 
   Model shaken(scene_config(SceneId::kMossGarden, 654U));
@@ -302,6 +316,6 @@ int main(int, char**) {
   RUN_TEST(test_mite_moves_independently_of_world_cells);
   RUN_TEST(test_mite_overlay_survives_downsampling);
   RUN_TEST(test_temporal_persistence_is_bounded_and_deterministic);
-  RUN_TEST(test_slider_spawns_second_mite_near_selected_x_and_shake_scatter_is_bounded);
+  RUN_TEST(test_slider_spawns_water_near_selected_x_and_shake_scatter_is_bounded);
   return UNITY_END();
 }
