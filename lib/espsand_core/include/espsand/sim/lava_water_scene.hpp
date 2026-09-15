@@ -20,12 +20,18 @@ struct LavaWaterSceneStats {
   std::uint8_t last_injection_x = 0;
 };
 
+struct LavaWaterTickContext {
+  World& world;
+  Pcg32& prng;
+  const InputFrame& input;
+  std::uint64_t tick;
+  WorkBudget& event_budget;
+};
+
 class LavaWaterScene {
 public:
   void initialize(World& world, Pcg32& prng) const noexcept;
-
-  LavaWaterSceneStats before_dynamics(World& world, Pcg32& prng, const InputFrame& input,
-                                      std::uint64_t tick, WorkBudget& event_budget) const noexcept;
+  LavaWaterSceneStats before_dynamics(LavaWaterTickContext context) const noexcept;
 };
 
 } // namespace espsand::sim
