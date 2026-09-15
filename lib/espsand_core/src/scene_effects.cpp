@@ -30,8 +30,7 @@ void blend_with_previous(io::Frame8x8& frame, const io::Frame8x8& previous,
   }
 }
 
-void apply_mite_overlay(io::Frame8x8& frame,
-                        const sim::MossGardenStateSnapshot& state) noexcept {
+void apply_mite_overlay(io::Frame8x8& frame, const sim::MossGardenStateSnapshot& state) noexcept {
   for (const sim::MiteState& mite : state.mites) {
     if (!mite.active) {
       continue;
