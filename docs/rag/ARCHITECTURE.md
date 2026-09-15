@@ -21,6 +21,9 @@ runtime orchestrator
 pure model
   world / materials / deterministic state / bounded work seams
           ↓
+shared dynamics
+  gravity transport / density / gas / heat / bounded reactions
+          ↓
 pure renderer
   16×16 logical world → deterministic 8×8 RGB frame
           ↓
@@ -28,7 +31,7 @@ physical output gateway
   brightness ceiling + aggregate-load limiter → RGB chain
 ```
 
-Dependencies point inward. The pure model, board-independent input state machines, renderer and output limiter contain no Arduino headers, GPIO numbers or LED-driver APIs. ES-004 establishes the deterministic substrate and ES-005 establishes its pure renderer/output-budget projection; transport, heat, reactions and agents remain later milestones.
+Dependencies point inward. The pure model, shared dynamics, board-independent input state machines, renderer and output limiter contain no Arduino headers, GPIO numbers or LED-driver APIs. ES-004 establishes deterministic state ownership, ES-005 establishes rendering/output budgeting, and ES-006 establishes the shared material-dynamics layer used by later hero scenes.
 
 ## Current repository shape
 
@@ -58,6 +61,7 @@ lib/
         world_renderer.hpp
       runtime/
       sim/
+        dynamics.hpp
         input_frame.hpp
         materials.hpp
         model.hpp
@@ -66,6 +70,7 @@ lib/
         world.hpp
     src/
       ...
+      dynamics.cpp
       input_frame.cpp
       model.cpp
       output_limiter.cpp
@@ -78,12 +83,13 @@ test/
   test_touch_semantics/
   test_simulation_core/
   test_renderer/
+  test_dynamics/
 docs/
   hardware/
   rag/
 ```
 
-Later material/scene modules should extend this shape without crossing the board/core seam.
+Later material/scene modules should extend this shape without crossing the board/core seam or duplicating shared mechanics inside scene classes.
 
 ## Board-I/O runtime rates
 
@@ -98,9 +104,11 @@ The accepted diagnostic baseline uses independent bounded schedules:
 
 Touch channels are pre-initialized during startup because the pinned Arduino-ESP32 `touchRead()` implementation incurs a one-time channel-configuration delay. This prevents first-use touch initialization from creating large stalls inside the steady-state main loop.
 
-Scheduling uses monotonic microsecond time and skips missed periods rather than performing unlimited catch-up work. ES-004 deliberately does not choose the final simulation frequency. The model exposes one deterministic `step(InputFrame)` per logical tick; the runtime will choose and schedule a fixed rate after profiling. Hardware poll rates must not become simulation semantics.
+Scheduling uses monotonic microsecond time and skips missed periods rather than performing unlimited catch-up work. The model exposes one deterministic `step(InputFrame)` per logical tick. Hardware poll rates must not become simulation semantics.
 
-Rendering is a pure projection and does not advance the model, consume model PRNG state or read wall-clock entropy.
+Rendering is a pure projection and does not advance the model, consume model PRNG state or read wall-clock entropy. ES-006 dynamics similarly receive only normalized `InputFrame` values; raw accelerometer/gyro samples and hardware sampling jitter remain outside the model boundary.
+
+The current diagnostic firmware does not yet execute a product scene continuously, so ES-006 cannot honestly claim a physical simulation-tick timing result. The required later on-board benchmark is explicit: run the first vertical-slice scene with fixed simulation cadence, report `sim_hz`, worst/rolling `max_tick_us`, render cadence and dropped/capped work in the 1 Hz serial telemetry, then exercise gravity/shake and reactions for at least several minutes. A tick budget must be selected from measured data rather than inferred from host tests.
 
 ## Hardware abstraction contracts
 
@@ -141,16 +149,15 @@ The model substrate lives under `lib/espsand_core/` and is ordinary C++17 with n
 - `Model` owns a PCG32 PRNG. Its seed, state and stream increment are explicit deterministic state; core logic must not use `rand()`, timestamps or platform entropy;
 - `InputFrame` is the normalized, hardware-independent input for one logical tick;
 - `Model::init`, `reset`, `reseed` and `step` provide the lifecycle seam used by later scenes/runtime work;
-- event and reaction `WorkBudget` instances provide fixed, saturating per-tick accounting seams;
-- the only ES-004 scene is a tiny deterministic fixture used to prove PRNG/state transitions. It is not a product hero scene.
+- event and reaction `WorkBudget` instances provide fixed, saturating per-tick accounting seams.
 
-The same seed, reset/initial state and `InputFrame` sequence must replay identically. External touch/noise irregularity affects a run only through recorded `InputFrame` values and does not perturb PRNG state unless future simulation code explicitly chooses to consume the PRNG for a defined rule.
+The original `kDeterminismFixture` remains unchanged as a foundational PRNG/input/replay fixture. The same seed, reset/initial state and `InputFrame` sequence must replay identically. External touch/noise irregularity affects a run only through recorded `InputFrame` values and does not perturb PRNG state unless simulation code explicitly chooses to consume the PRNG for a defined rule.
 
 ### State hash contract
 
 `Model::state_hash()` is a stable FNV-1a 64-bit regression/replay identity over explicit, canonical little-endian fields. It covers the hash/material/cell schema versions, dimensions, scene/configuration, seed, tick, PRNG state, fixture state, budget counters and every cell in deterministic row-major order.
 
-The hash deliberately does **not** serialize raw struct memory, so padding and host ABI do not define replay identity. It is not a cryptographic integrity or security mechanism. Intentional semantic changes may change the hash and must update the golden trace in the same change with an explanation.
+The hash deliberately does **not** serialize raw struct memory, so padding and host ABI do not define replay identity. It is not a cryptographic integrity or security mechanism. ES-006 adds a dynamics-schema discriminator only for `kDynamicsFixture`; the ES-004 fixture retains its existing exact hashes.
 
 ## ES-005 deterministic renderer and output budget
 
@@ -162,28 +169,42 @@ The renderer also exposes deterministic material-ID, temperature and mass diagno
 
 `OutputLimiter` is deliberately separate from simulation and material shading. It computes the applied global brightness from the requested value, the hard ceiling and a dimensionless aggregate RGB PWM-load envelope. Its default load value is a conservative software policy, not a milliamps/temperature claim.
 
+## ES-006 shared dynamics
+
+`DynamicsEngine` is a stateless pure-core service operating on `World`, one normalized `InputFrame`, an explicit tick index and the model-owned work budgets.
+
+- movement uses fixed scans and fixed-size claim arrays; one cell cannot participate in two transport exchanges during a tick;
+- density, mobility, gas/solid classification, thermal conductivity and ambient loss live in one centralized material-dynamics table;
+- diagonal normalized gravity is converted to a deterministic cardinal duty sequence rather than continuous floating-point positions;
+- shake/motion/tap/spin increase bounded disturbance/mobility while low-frequency gravity direction remains separate;
+- pairwise heat exchange accumulates into a fixed 256-element delta array before application;
+- three centralized adjacency reaction primitives cover the shared mechanics required by later lava/water, sodium-like/water and oil/fire scenes;
+- reactions consume `WorkBudget` units, never recurse, and optional local reaction impulses consume event budget;
+- finite fire lifetime is generic shared material behavior, not scene animation.
+
+`kDynamicsFixture` exists only to test this shared layer under the full `Model::step()`/hash lifecycle. It is not a hero scene.
+
 ## Scene lifecycle seam
 
-A later product scene should primarily define:
+A product scene should primarily define:
 
 - deterministic world initialization from model configuration/seed;
-- enabled materials/reactions;
-- mapping of normalized `InputFrame` fields/events to bounded simulation actions;
+- enabled material injection and scene-local scripted events;
+- mapping of normalized `InputFrame` fields/events to bounded scene actions;
 - reset/reseed policy;
-- optional scene-local scripted events;
-- palette/render hints outside the pure material rules where needed.
+- optional palette/render hints outside the shared material rules.
 
-BOOT-derived `InputFrame::boot_event` carries semantic lifecycle intent, but ES-004 does not make the generic model silently reset itself from inside `step()`. The runtime/scene controller owns reset/reseed/scene-advance policy and calls the explicit lifecycle methods.
+BOOT-derived `InputFrame::boot_event` carries semantic lifecycle intent, but the generic model does not silently reset itself from inside `step()`. The runtime/scene controller owns reset/reseed/scene-advance policy and calls the explicit lifecycle methods.
 
-A scene should **not** reimplement gravity transport, thermal diffusion, generic combustion or generic reaction scheduling once later core milestones provide those systems.
+Scenes must use the ES-006 shared transport, thermal and reaction mechanisms. If a later vertical slice exposes a genuine deficiency, fix the shared layer and add a regression test rather than hiding bespoke physics in scene code.
 
 ## Runtime safety
 
 - No blocking `delay()`-style scene logic.
 - No dynamic allocation in hot per-tick loops unless profiling proves it harmless and bounded.
-- Frame-critical world/model storage is fixed-size in ES-004.
+- Frame-critical world/model/dynamics scratch storage is fixed-size.
 - Cap particles/agents/events explicitly.
-- Reaction chains must participate in bounded per-tick work rather than recurse without limit.
+- Reaction chains participate in bounded per-tick work and never recurse.
 - Watchdog friendliness is a design requirement.
 - Diagnostics should expose dropped/capped work rather than silently hiding overload.
 - Missing IMU is a degraded mode, not a crash condition.
@@ -198,9 +219,11 @@ Development output should be machine-readable enough to support capture. Include
 - current diagnostic/scene mode;
 - measured rates and update-time maxima;
 - IMU health, detected I2C address and scaled vectors;
+- normalized gravity/confidence and disturbance energy once scene runtime is active;
 - detected button/tap/shake/touch events;
 - touch raw/baseline/noise/normalized/common-mode values during characterization;
-- model seed/state identity and reaction/event overflow counters once the runtime executes model scenes;
+- model seed/state identity and reaction/event overflow counters;
+- transport/reaction counts and simulation tick maxima during physical profiling;
 - current global brightness/power limiter state.
 
 Human-readable compact lines are sufficient for v0; a rigid binary protocol is unnecessary.
