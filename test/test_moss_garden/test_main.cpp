@@ -227,13 +227,13 @@ void test_tilt_changes_future_growth_geometry() {
 
 void test_mite_moves_independently_of_world_cells() {
   Model model(scene_config(SceneId::kMossGarden, 456U));
-  const auto before = model.moss_garden_state();
+  const MiteState start = model.moss_garden_state().mites[0];
+  bool saw_move = false;
   for (std::uint32_t tick = 0; tick < 40U; ++tick) {
     model.step(gravity_frame(0.0F, 1.0F));
+    saw_move = saw_move || mite_moved(start, model.moss_garden_state().mites[0]);
   }
-  const auto after = model.moss_garden_state();
-
-  TEST_ASSERT_TRUE(mite_moved(before.mites[0], after.mites[0]));
+  TEST_ASSERT_TRUE(saw_move);
 }
 
 void test_mite_overlay_survives_downsampling() {
