@@ -59,13 +59,18 @@ struct ReactionRule {
   std::uint8_t second_aux = 0;
 };
 
+inline constexpr ReactionRule kLavaWaterReaction{
+    MaterialId::kLava, MaterialId::kWater, MaterialId::kCrust, MaterialId::kSteam, 700, 600, 0, 0};
+inline constexpr ReactionRule kSodiumWaterReaction{
+    MaterialId::kSodiumLike, MaterialId::kWater, MaterialId::kFire, MaterialId::kSteam, 1500, 900,
+    12, 0};
+inline constexpr ReactionRule kOilFireReaction{
+    MaterialId::kOil, MaterialId::kFire, MaterialId::kFire, MaterialId::kFire, 1100, 1000, 16, 12};
+
 inline constexpr std::array<ReactionRule, 3> kReactionRules{{
-    {MaterialId::kLava, MaterialId::kWater, MaterialId::kCrust, MaterialId::kSteam, 700,
-     600, 0, 0},
-    {MaterialId::kSodiumLike, MaterialId::kWater, MaterialId::kFire, MaterialId::kSteam, 1500, 900,
-     12, 0},
-    {MaterialId::kOil, MaterialId::kFire, MaterialId::kFire, MaterialId::kFire, 1100,
-     1000, 16, 12},
+    kLavaWaterReaction,
+    kSodiumWaterReaction,
+    kOilFireReaction,
 }};
 
 struct DynamicsStats {
