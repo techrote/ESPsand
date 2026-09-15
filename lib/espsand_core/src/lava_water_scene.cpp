@@ -73,13 +73,13 @@ bool inject_top(World& world, Pcg32& prng, MaterialId material, std::uint8_t mas
 bool inject_touch_lava(World& world, float position, std::uint8_t& injected_x) noexcept {
   const std::uint8_t preferred = slider_to_interior_x(position);
   constexpr std::array<int, 5> kOffsets{{0, -1, 1, -2, 2}};
+  const Cell lava = material_cell(MaterialId::kLava, kLavaMass, kLavaTemperature);
   for (int offset : kOffsets) {
     const int x = static_cast<int>(preferred) + offset;
     if (x <= 0 || x + 1 >= static_cast<int>(kWorldWidth)) {
       continue;
     }
-    if (try_inject(world, x, 1,
-                   material_cell(MaterialId::kLava, kLavaMass, kLavaTemperature))) {
+    if (try_inject(world, x, 1, lava)) {
       injected_x = static_cast<std::uint8_t>(x);
       return true;
     }
@@ -180,28 +180,30 @@ void LavaWaterScene::initialize(World& world, Pcg32& prng) const noexcept {
   static_cast<void>(world.set_cell(contact_x, 9, lava));
 }
 
-LavaWaterSceneStats LavaWaterScene::before_dynamics(World& world, Pcg32& prng,
-                                                    const InputFrame& input,
-                                                    std::uint64_t tick,
-                                                    WorkBudget& event_budget) const noexcept {
+LavaWaterSceneStats LavaWaterScene::before_dynamics(LavaWaterTickContext context) const noexcept {
   LavaWaterSceneStats stats{};
+  World& world = context.world;
+  Pcg32& prng = context.prng;
+  const InputFrame& input = context.input;
+  WorkBudget& event_budget = context.event_budget;
 
-  if (tick != 0U && tick % kAutoLavaPeriodTicks == 0U) {
+  if (context.tick != 0U && context.tick % kAutoLavaPeriodTicks == 0U) {
     if (inject_top(world, prng, MaterialId::kLava, kLavaMass, kLavaTemperature,
                    stats.last_injection_x)) {
       ++stats.autonomous_lava_injections;
     }
   }
 
-  if (tick != 0U && tick % kAutoWaterPeriodTicks == 0U) {
+  if (context.tick != 0U && context.tick % kAutoWaterPeriodTicks == 0U) {
     if (inject_top(world, prng, MaterialId::kWater, kWaterMass, kWaterTemperature,
                    stats.last_injection_x)) {
       ++stats.autonomous_water_injections;
     }
   }
 
-  if (input.slider_active && input.slider_strength >= 0.35F &&
-      tick % kTouchLavaPeriodTicks == 0U && event_budget.try_consume()) {
+  const bool slider_due = input.slider_active && input.slider_strength >= 0.35F &&
+                          context.tick % kTouchLavaPeriodTicks == 0U;
+  if (slider_due && event_budget.try_consume()) {
     if (inject_touch_lava(world, input.slider_position, stats.last_injection_x)) {
       ++stats.touch_lava_injections;
     }
