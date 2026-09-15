@@ -119,6 +119,26 @@ void test_render_diagnostic_modes_are_deterministic() {
   }
 }
 
+void test_temperature_diagnostic_preserves_strong_cold_signal() {
+  World world;
+  Cell warm{};
+  warm.material = MaterialId::kWater;
+  warm.mass = 255;
+  warm.temperature = 400;
+  TEST_ASSERT_TRUE(world.set_cell(0, 0, warm));
+
+  Cell cold = warm;
+  cold.temperature = -1200;
+  TEST_ASSERT_TRUE(world.set_cell(1, 0, cold));
+
+  RenderConfig config{};
+  config.mode = RenderMode::kTemperature;
+  const auto frame = WorldRenderer{}.render(world, config).frame;
+
+  TEST_ASSERT_TRUE(frame[0].b > frame[0].r);
+  TEST_ASSERT_TRUE(frame[0].b > frame[0].g);
+}
+
 void test_unknown_material_is_safe_and_counted() {
   World world;
   Cell* cell = world.try_cell(0, 0);
@@ -206,6 +226,7 @@ int main(int, char**) {
   RUN_TEST(test_mixed_block_preserves_bright_minority);
   RUN_TEST(test_palette_mapping_keeps_materials_visually_distinct);
   RUN_TEST(test_render_diagnostic_modes_are_deterministic);
+  RUN_TEST(test_temperature_diagnostic_preserves_strong_cold_signal);
   RUN_TEST(test_unknown_material_is_safe_and_counted);
   RUN_TEST(test_output_limiter_clamps_dense_white_below_ceiling);
   RUN_TEST(test_output_limiter_allows_sparse_frame_to_ceiling);
