@@ -228,9 +228,10 @@ void SceneRuntime::handle_button(io::ButtonEvent event) {
   char line[192];
   if (event == io::ButtonEvent::kShortPress) {
     model_.reset();
+    const char* name = sim::scene_name(model_.scene());
+    const auto seed = static_cast<unsigned long long>(model_.seed());
     std::snprintf(line, sizeof(line), "input.button event=short action=reset scene=%s seed=%llu",
-                  sim::scene_name(model_.scene()),
-                  static_cast<unsigned long long>(model_.seed()));
+                  name, seed);
     diagnostics_.write_line(line);
   } else if (event == io::ButtonEvent::kLongPress) {
     const sim::SceneId previous = model_.scene();
@@ -291,6 +292,8 @@ void SceneRuntime::emit_scene_telemetry(const sim::MaterialTotals& totals,
                                         const sim::DynamicsStats& dynamics,
                                         const render::OutputDecision& output) {
   char line[512];
+  // clang-format off
+  // Keep each compact telemetry schema aligned with its argument order for field-level review.
   switch (model_.scene()) {
   case sim::SceneId::kLavaWater: {
     const sim::LavaWaterSceneStats scene = model_.lava_water_stats();
@@ -358,6 +361,7 @@ void SceneRuntime::emit_scene_telemetry(const sim::MaterialTotals& totals,
                   sim::scene_name(model_.scene()));
     break;
   }
+  // clang-format on
   diagnostics_.write_line(line);
 }
 
