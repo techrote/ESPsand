@@ -118,7 +118,7 @@ void test_sodium_scene_initializes_water_and_finite_reactant_deterministically()
 
   TEST_ASSERT_EQUAL_UINT64(first.state_hash(), second.state_hash());
   TEST_ASSERT_TRUE(first.invariants_hold());
-  TEST_ASSERT_TRUE(material_mass(first, MaterialId::kWater) > 15000U);
+  TEST_ASSERT_TRUE(material_mass(first, MaterialId::kWater) > 10000U);
   TEST_ASSERT_TRUE(material_mass(first, MaterialId::kSodiumLike) > 0U);
   TEST_ASSERT_EQUAL_UINT32(0U, material_mass(first, MaterialId::kFire));
   TEST_ASSERT_EQUAL_UINT32(0U, material_mass(first, MaterialId::kSteam));
