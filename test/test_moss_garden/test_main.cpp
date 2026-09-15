@@ -8,6 +8,7 @@
 #include <espsand/sim/materials.hpp>
 #include <espsand/sim/model.hpp>
 #include <espsand/sim/moss_garden_scene.hpp>
+#include <espsand/sim/scene_limits.hpp>
 
 namespace {
 
@@ -89,7 +90,7 @@ void test_product_scenes_do_not_reserve_a_wall_border() {
   }
 }
 
-void test_moss_scene_initialization_is_deterministic_and_alive() {
+void test_moss_scene_initialization_is_deterministic_sparse_and_alive() {
   Model first(scene_config(SceneId::kMossGarden));
   Model second(scene_config(SceneId::kMossGarden));
 
@@ -97,7 +98,11 @@ void test_moss_scene_initialization_is_deterministic_and_alive() {
   TEST_ASSERT_TRUE(first.invariants_hold());
   TEST_ASSERT_TRUE(material_mass(first, MaterialId::kWater) > 0U);
   TEST_ASSERT_TRUE(material_mass(first, MaterialId::kMoss) > 0U);
-  TEST_ASSERT_EQUAL_UINT8(2U, first.moss_garden_state().mite_count);
+  TEST_ASSERT_TRUE(first.world().totals().cell_count[espsand::sim::material_index(MaterialId::kWater)] <=
+                   espsand::sim::kProductMaterialCellLimit);
+  TEST_ASSERT_TRUE(first.world().totals().cell_count[espsand::sim::material_index(MaterialId::kMoss)] <=
+                   espsand::sim::kProductMaterialCellLimit);
+  TEST_ASSERT_EQUAL_UINT8(1U, first.moss_garden_state().mite_count);
 }
 
 void test_growth_requires_moisture() {
@@ -125,6 +130,8 @@ void test_wet_habitat_generates_bounded_growth() {
 
   TEST_ASSERT_TRUE(stats.growth_cells + stats.reinforced_cells > 0U);
   TEST_ASSERT_TRUE(scene.snapshot().growth_energy <= 512U);
+  TEST_ASSERT_TRUE(world.totals().cell_count[espsand::sim::material_index(MaterialId::kMoss)] <=
+                   espsand::sim::kProductMaterialCellLimit);
 }
 
 void test_mites_feed_and_gain_energy_from_biomass() {
@@ -140,7 +147,7 @@ void test_mites_feed_and_gain_energy_from_biomass() {
 
   TEST_ASSERT_TRUE(stats.feeds > 0U);
   TEST_ASSERT_TRUE(after.mites[0].energy > before.mites[0].energy);
-  TEST_ASSERT_TRUE(after.mites[1].energy > before.mites[1].energy);
+  TEST_ASSERT_FALSE(after.mites[1].active);
 }
 
 void test_mites_starve_without_biomass_and_remain_bounded() {
@@ -222,8 +229,7 @@ void test_mite_moves_independently_of_world_cells() {
   }
   const auto after = model.moss_garden_state();
 
-  TEST_ASSERT_TRUE(mite_moved(before.mites[0], after.mites[0]) ||
-                   mite_moved(before.mites[1], after.mites[1]));
+  TEST_ASSERT_TRUE(mite_moved(before.mites[0], after.mites[0]));
 }
 
 void test_mite_overlay_survives_downsampling() {
@@ -256,15 +262,18 @@ void test_temporal_persistence_is_bounded_and_deterministic() {
   TEST_ASSERT_TRUE(a[0].g < a[0].r);
 }
 
-void test_slider_rain_and_shake_scatter_are_bounded() {
-  Model rain(scene_config(SceneId::kMossGarden, 321U));
-  InputFrame rain_frame{};
-  rain_frame.slider_active = true;
-  rain_frame.slider_position = 0.0F;
-  rain_frame.slider_strength = 1.0F;
-  rain.step(rain_frame);
-  TEST_ASSERT_EQUAL_UINT16(1U, rain.moss_garden_stats().rain_pulses);
-  TEST_ASSERT_TRUE(rain.tick_work_stats().events.used <= rain.tick_work_stats().events.limit);
+void test_slider_spawns_second_mite_near_selected_x_and_shake_scatter_is_bounded() {
+  Model touched(scene_config(SceneId::kMossGarden, 321U));
+  InputFrame touch_frame{};
+  touch_frame.slider_active = true;
+  touch_frame.slider_position = 0.8F;
+  touch_frame.slider_strength = 1.0F;
+  touched.step(touch_frame);
+  const auto touched_state = touched.moss_garden_state();
+  TEST_ASSERT_EQUAL_UINT8(2U, touched_state.mite_count);
+  TEST_ASSERT_EQUAL_UINT16(1U, touched.moss_garden_stats().touch_mite_spawns);
+  TEST_ASSERT_TRUE(touched_state.mites[1].x >= 9U);
+  TEST_ASSERT_TRUE(touched.tick_work_stats().events.used <= touched.tick_work_stats().events.limit);
 
   Model shaken(scene_config(SceneId::kMossGarden, 654U));
   InputFrame shake = gravity_frame(0.0F, 1.0F);
@@ -279,7 +288,7 @@ void test_slider_rain_and_shake_scatter_are_bounded() {
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_product_scenes_do_not_reserve_a_wall_border);
-  RUN_TEST(test_moss_scene_initialization_is_deterministic_and_alive);
+  RUN_TEST(test_moss_scene_initialization_is_deterministic_sparse_and_alive);
   RUN_TEST(test_growth_requires_moisture);
   RUN_TEST(test_wet_habitat_generates_bounded_growth);
   RUN_TEST(test_mites_feed_and_gain_energy_from_biomass);
@@ -289,6 +298,6 @@ int main(int, char**) {
   RUN_TEST(test_mite_moves_independently_of_world_cells);
   RUN_TEST(test_mite_overlay_survives_downsampling);
   RUN_TEST(test_temporal_persistence_is_bounded_and_deterministic);
-  RUN_TEST(test_slider_rain_and_shake_scatter_are_bounded);
+  RUN_TEST(test_slider_spawns_second_mite_near_selected_x_and_shake_scatter_is_bounded);
   return UNITY_END();
 }
