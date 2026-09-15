@@ -26,7 +26,20 @@ The current suite covers foundation/board/input logic plus the ES-004 determinis
 - a versioned golden multi-tick state trace;
 - 5,000 randomized ticks on duplicate models while checking invariants, accounting, bounded work and randomized out-of-bounds probes.
 
-Later milestones add transport conservation, density/buoyancy, heat, reactions, biology and renderer tests when those systems actually exist. Do not add placeholder assertions that imply unimplemented physics is validated.
+ES-005 adds renderer/output-policy tests for:
+
+- byte-identical output from fixed world/configuration;
+- 16×16 -> 8×8 2×2 aggregation;
+- preservation of one low-mass hot/fire cell inside a water-majority output block;
+- distinct centralized water/lava/moss palette identities;
+- deterministic beauty/material-ID/temperature/mass diagnostic modes;
+- safe invalid-material fallback/counting;
+- hard brightness-ceiling clamping and dense-frame aggregate-load limiting;
+- sparse-frame preservation under the same output budget;
+- fail-dark zero-load policy;
+- randomized full-world render repeatability.
+
+Later milestones add transport conservation, density/buoyancy, heat, reactions and biology when those systems actually exist. Do not add placeholder assertions that imply unimplemented physics is validated.
 
 ### 2. Firmware compile
 
@@ -74,6 +87,8 @@ The final tick also locks event-budget saturation at `used=2`, `dropped=1`.
 
 An intentional model-semantic change may alter these fixtures. Update the fixture and explanatory documentation in the same PR; an unexplained hash drift is a regression.
 
+Renderer output is not part of the model state hash because rendering is a pure projection and cannot affect future model evolution. ES-005 tests byte-identical render frames directly instead.
+
 ## Hardware validation gates
 
 Some checks require the actual device. Issues should identify them explicitly and provide a concise procedure plus expected evidence.
@@ -90,6 +105,8 @@ Examples:
 
 A remote agent may complete code and CI but must not claim one of these passed without user-provided or machine-collected board evidence. ES-004 itself changes only pure model contracts and does not introduce a new physical-board acceptance gate.
 
+ES-005 deliberately leaves its 32/255 hard brightness ceiling and 4096-unit aggregate PWM-load envelope `NEEDS_PHYSICAL_VALIDATION`. Automated tests prove limiter arithmetic and gateway integration; they do not prove a sustained electrical/thermal safety rating.
+
 ## Serial evidence
 
 Diagnostics should make hardware validation easy to paste into an issue/PR. Prefer concise lines such as:
@@ -101,7 +118,7 @@ touch ch=... raw=... base=... z=...
 scene=lava_water seed=...
 ```
 
-Exact schema may differ. Model seed/hash/budget diagnostics should be added when the runtime begins executing product simulation scenes.
+Exact schema may differ. Model seed/hash/budget and output-limiter requested/applied/load diagnostics should be added as the runtime begins executing product simulation scenes.
 
 ## PR checklist
 

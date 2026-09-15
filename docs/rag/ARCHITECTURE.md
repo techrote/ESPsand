@@ -21,11 +21,14 @@ runtime orchestrator
 pure model
   world / materials / deterministic state / bounded work seams
           ↓
-renderer
-  logical world → 8×8 HDR-ish frame → power-aware output
+pure renderer
+  16×16 logical world → deterministic 8×8 RGB frame
+          ↓
+physical output gateway
+  brightness ceiling + aggregate-load limiter → RGB chain
 ```
 
-Dependencies point inward. The pure model and board-independent input state machines contain no Arduino headers, GPIO numbers or LED-driver APIs. ES-004 establishes the pure deterministic substrate; transport, heat, reactions, agents and rendering remain later milestones.
+Dependencies point inward. The pure model, board-independent input state machines, renderer and output limiter contain no Arduino headers, GPIO numbers or LED-driver APIs. ES-004 establishes the deterministic substrate and ES-005 establishes its pure renderer/output-budget projection; transport, heat, reactions and agents remain later milestones.
 
 ## Current repository shape
 
@@ -50,6 +53,9 @@ lib/
       core/
       input/
       io/
+      render/
+        output_limiter.hpp
+        world_renderer.hpp
       runtime/
       sim/
         input_frame.hpp
@@ -62,13 +68,16 @@ lib/
       ...
       input_frame.cpp
       model.cpp
+      output_limiter.cpp
       prng.cpp
       world.cpp
+      world_renderer.cpp
 test/
   test_foundation/
   test_board_logic/
   test_touch_semantics/
   test_simulation_core/
+  test_renderer/
 docs/
   hardware/
   rag/
@@ -91,6 +100,8 @@ Touch channels are pre-initialized during startup because the pinned Arduino-ESP
 
 Scheduling uses monotonic microsecond time and skips missed periods rather than performing unlimited catch-up work. ES-004 deliberately does not choose the final simulation frequency. The model exposes one deterministic `step(InputFrame)` per logical tick; the runtime will choose and schedule a fixed rate after profiling. Hardware poll rates must not become simulation semantics.
 
+Rendering is a pure projection and does not advance the model, consume model PRNG state or read wall-clock entropy.
+
 ## Hardware abstraction contracts
 
 The pure core defines narrow interfaces/types for:
@@ -106,7 +117,7 @@ Host tests implement or exercise these contracts without ESP32 headers. `NullTou
 
 Board adapters under `src/board/` are the only layer allowed to know concrete GPIOs or Arduino peripheral APIs. `TouchZones` samples candidate pins and delegates baseline/noise/common-mode/hysteresis logic to the pure touch-normalization layer.
 
-`MatrixOutput` is the mandatory physical LED gateway: it owns the NeoPixel object and clamps every frame to the current global development ceiling. Scene code must never instantiate or call the LED driver directly.
+`MatrixOutput` is the mandatory physical LED gateway: it owns the NeoPixel object and every frame passes through its pure `OutputLimiter` before hardware brightness is applied. The limiter enforces both the current global development ceiling and a provisional aggregate RGB PWM-load envelope. Scene code must never instantiate or call the LED driver directly.
 
 ## ES-003 / ES-003A touch truth boundary
 
@@ -141,6 +152,16 @@ The same seed, reset/initial state and `InputFrame` sequence must replay identic
 
 The hash deliberately does **not** serialize raw struct memory, so padding and host ABI do not define replay identity. It is not a cryptographic integrity or security mechanism. Intentional semantic changes may change the hash and must update the golden trace in the same change with an explanation.
 
+## ES-005 deterministic renderer and output budget
+
+`WorldRenderer` maps each fixed 2×2 logical block to one physical pixel. Beauty rendering combines mass-weighted material colour with a deterministic high-importance accent so small fire/lava/steam/tracer/biomass features are not erased merely because another material occupies most of the block.
+
+Material shading is centralized. Positive `Cell::temperature` contributes bounded warm logical emission; tracer/moss `aux` values provide bounded palette modulation. Integer Q8 exposure and rational tone mapping produce an 8-bit frame without hidden random dithering or floating-point replay dependencies.
+
+The renderer also exposes deterministic material-ID, temperature and mass diagnostic projections. Invalid material IDs use a safe fallback and are counted rather than indexing outside the style table.
+
+`OutputLimiter` is deliberately separate from simulation and material shading. It computes the applied global brightness from the requested value, the hard ceiling and a dimensionless aggregate RGB PWM-load envelope. Its default load value is a conservative software policy, not a milliamps/temperature claim.
+
 ## Scene lifecycle seam
 
 A later product scene should primarily define:
@@ -167,6 +188,7 @@ A scene should **not** reimplement gravity transport, thermal diffusion, generic
 - Diagnostics should expose dropped/capped work rather than silently hiding overload.
 - Missing IMU is a degraded mode, not a crash condition.
 - Missing/noisy capacitive input is an unavailable optional capability, not a crash or scene dependency.
+- Every physical LED frame passes through the single centralized ES-005 output budget.
 
 ## Serial diagnostics
 

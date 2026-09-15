@@ -61,6 +61,12 @@ The 64 LEDs can draw substantial current at high simultaneous brightness. v0 the
 
 The likely Waveshare-family vendor explicitly warns that excessive brightness can rapidly heat and damage the board. This warning does not provide a numeric safe ceiling. Until measured on the actual board, use a conservative software ceiling and keep its status `NEEDS_PHYSICAL_VALIDATION`.
 
+ES-005 implements that centralized path inside `MatrixOutput`. The current provisional policy is a hard brightness ceiling of **32/255** plus an aggregate frame-load limit of **4096 dimensionless software load units**, where load is derived from `sum(R+G+B) * brightness / 255`. The load figure is not milliamps and is not a measured safe-current or safe-temperature rating.
+
+The second limit intentionally reduces dense output further than sparse highlights; with the current deterministic formula, a 64-pixel full-white frame requested at 255 is reduced to 21/255. Runtime policy may lower/tune the output budget, but `MatrixOutput` clamps its brightness ceiling so code cannot raise physical brightness above the current unvalidated 32/255 hard cap.
+
+Before raising or certifying the hard ceiling, perform sustained physical validation using representative sparse scenes and deliberately dense RGB/white patterns. Prefer an inline USB current meter and temperature probe if available, exercise candidate settings in small increments, soak for 30–60 minutes or longer, and record pattern, ambient conditions, applied limiter state, current/temperature where available, and any resets/USB instability/colour shift. Stop on undesirable heating. Do not infer a sustained safe setting from a short visual check.
+
 ## Capacitive experiment constraints
 
 The ESP32-S3 supports native touch sensing on GPIO1–GPIO14 at the silicon level, but exact usable pins depend on board routing.

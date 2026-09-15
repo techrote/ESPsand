@@ -26,13 +26,15 @@ ES-004 establishes the host-testable 16×16 deterministic world, compact cell/ma
 
 Subsequent B milestones build on these contracts rather than replacing deterministic state ownership. Intentional model-semantic changes must update the corresponding fixture/schema deliberately.
 
-### B2. Renderer and power-aware output
+### B2. Renderer and power-aware output — ES-005 baseline
 
-Implement supersampled logical-world to 8×8 aggregation, important-minority/emissive preservation, palette/material shading, central brightness/current limiter and render diagnostics.
+ES-005 establishes deterministic 2×2 supersampled aggregation to 8×8, important-minority preservation, centralized material/thermal shading, fixed-point exposure/tone mapping, pure render diagnostics, and a mandatory physical `MatrixOutput` limiter path.
+
+The current board policy remains intentionally provisional: 32/255 hard brightness ceiling plus a 4096-unit dimensionless aggregate frame-load envelope. These are development limits, not validated current/temperature ratings; sustained physical soak evidence is still required before raising or certifying them.
 
 ### B3. Transport, heat, gas and reaction engine
 
-Add gravity-directed transport, density/buoyancy tendency, liquid viscosity differences, bounded momentum proxy if beneficial, gas movement, heat exchange and centralized bounded reactions. Integrate normalized IMU gravity and motion-energy inputs through the ES-004 `InputFrame` contract.
+Add gravity-directed transport, density/buoyancy tendency, liquid viscosity differences, bounded momentum proxy if beneficial, gas movement, heat exchange and centralized bounded reactions. Integrate normalized IMU gravity and motion-energy inputs through the ES-004 `InputFrame` contract and render through the ES-005 output path.
 
 ## Milestone C — Hero vertical slices
 
