@@ -179,10 +179,12 @@ void LavaWaterScene::initialize(World& world, Pcg32& prng) const noexcept {
   world.clear();
 
   const Cell water = material_cell(MaterialId::kWater, kWaterMass, kWaterTemperature);
+  // clang-format off
   constexpr std::array<std::array<int, 2>, 12> kWaterPockets{{
       {{0, 15}}, {{2, 14}}, {{3, 15}}, {{5, 13}}, {{6, 15}}, {{7, 12}},
       {{8, 14}}, {{10, 13}}, {{11, 15}}, {{13, 14}}, {{14, 15}}, {{15, 13}},
   }};
+  // clang-format on
   for (std::size_t index = 0; index < kWaterPockets.size(); ++index) {
     const auto& point = kWaterPockets[index];
     Cell pocket = water;
@@ -190,9 +192,11 @@ void LavaWaterScene::initialize(World& world, Pcg32& prng) const noexcept {
     static_cast<void>(world.set_cell(point[0], point[1], pocket));
   }
 
+  // clang-format off
   constexpr std::array<std::array<int, 2>, 7> kLavaStream{{
       {{7, 0}}, {{8, 2}}, {{7, 4}}, {{8, 6}}, {{7, 8}}, {{8, 10}}, {{7, 11}},
   }};
+  // clang-format on
   for (std::size_t index = 0; index < kLavaStream.size(); ++index) {
     const auto& point = kLavaStream[index];
     const std::uint8_t mass = static_cast<std::uint8_t>(174U + (index % 3U) * 24U);
