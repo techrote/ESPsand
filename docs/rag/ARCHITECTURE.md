@@ -2,7 +2,9 @@
 
 ## Toolchain
 
-Accepted foundation: PlatformIO with pinned Espressif32 + Arduino for firmware, plus a pinned native PlatformIO environment for host tests. `platformio.ini` carries the corrected ESP32-S3FH4R2 memory profile for the tested Waveshare target.
+Accepted foundation: PlatformIO with pinned Espressif32 + Arduino for firmware, plus a pinned native PlatformIO environment for host tests. See `platformio.ini` and `requirements-dev.txt` for exact versions.
+
+The embedded compile profile uses the generic ESP32-S3 DevKitC definition only as a compiler/framework base. `docs/hardware/BOARD_PROFILE.md` is the hardware source of truth for the actual Waveshare ESP32-S3-Matrix target and `platformio.ini` carries the required FH4R2 memory overrides.
 
 ## Layering
 
@@ -20,85 +22,185 @@ pure model
   world / materials / deterministic state / bounded work seams
           ↓
 pure renderer
-  16×16 world → 8×8 tone-mapped RGB frame
+  16×16 logical world → deterministic 8×8 RGB frame
           ↓
 physical output gateway
-  centralized brightness + aggregate-load limiter → RGB chain
+  brightness ceiling + aggregate-load limiter → RGB chain
 ```
 
-Dependencies point inward. Pure model, input interpretation, renderer and limiter code contain no Arduino headers, GPIO numbers or LED-driver APIs.
+Dependencies point inward. The pure model, board-independent input state machines, renderer and output limiter contain no Arduino headers, GPIO numbers or LED-driver APIs. ES-004 establishes the deterministic substrate and ES-005 establishes its pure renderer/output-budget projection; transport, heat, reactions and agents remain later milestones.
 
 ## Current repository shape
 
 ```text
+platformio.ini
 src/
+  main.cpp
   app/
+    diagnostic_runtime.*
   board/
-    matrix_output.*        # sole NeoPixel owner / physical limiter gateway
-lib/espsand_core/
-  include/espsand/
-    input/
-    io/
-    runtime/
-    sim/
-    render/
-      world_renderer.hpp
-      output_limiter.hpp
-  src/
-    world_renderer.cpp
-    output_limiter.cpp
-    ...
+    board_profile.hpp
+    boot_button.*
+    diagnostics.*
+    matrix_output.*
+    monotonic_clock.hpp
+    qmi8658_imu.*
+    serial_diagnostics.*
+    touch_zones.*
+lib/
+  espsand_core/
+    include/espsand/
+      core/
+      input/
+      io/
+      render/
+        output_limiter.hpp
+        world_renderer.hpp
+      runtime/
+      sim/
+        input_frame.hpp
+        materials.hpp
+        model.hpp
+        prng.hpp
+        work_budget.hpp
+        world.hpp
+    src/
+      ...
+      input_frame.cpp
+      model.cpp
+      output_limiter.cpp
+      prng.cpp
+      world.cpp
+      world_renderer.cpp
 test/
+  test_foundation/
+  test_board_logic/
+  test_touch_semantics/
   test_simulation_core/
   test_renderer/
-  ...
 docs/
   hardware/
   rag/
 ```
 
-## Scheduling
+Later material/scene modules should extend this shape without crossing the board/core seam.
 
-Board-I/O uses bounded independent schedules. The diagnostic baseline polls IMU nominally at 200 Hz, presents the matrix at approximately 60 Hz, reports normal telemetry at 1 Hz, and scans touch channels on the established bounded schedule.
+## Board-I/O runtime rates
 
-The model still exposes exactly one deterministic `step(InputFrame)` per logical tick; final product simulation frequency is a runtime decision after profiling. Rendering is a pure projection and does not advance model time or consume model PRNG state.
+The accepted diagnostic baseline uses independent bounded schedules:
+
+- QMI8658 configured for 1 kHz accel/gyro ODR, polled nominally at 200 Hz;
+- matrix presentation target approximately 60 Hz;
+- normal serial runtime telemetry 1 Hz;
+- BOOT sampled every main-loop iteration through a host-tested debounce/gesture state machine;
+- ES-003 touch characterization reads at most one native touch channel every 4 ms, producing a complete seven-channel scan approximately every 28 ms;
+- detailed touch telemetry is limited to approximately 10 Hz and only while the touch diagnostic page is active.
+
+Touch channels are pre-initialized during startup because the pinned Arduino-ESP32 `touchRead()` implementation incurs a one-time channel-configuration delay. This prevents first-use touch initialization from creating large stalls inside the steady-state main loop.
+
+Scheduling uses monotonic microsecond time and skips missed periods rather than performing unlimited catch-up work. ES-004 deliberately does not choose the final simulation frequency. The model exposes one deterministic `step(InputFrame)` per logical tick; the runtime will choose and schedule a fixed rate after profiling. Hardware poll rates must not become simulation semantics.
+
+Rendering is a pure projection and does not advance the model, consume model PRNG state or read wall-clock entropy.
 
 ## Hardware abstraction contracts
 
-The core exposes narrow interfaces for clock, IMU, button, touch zones, matrix output and diagnostics. Board adapters under `src/board/` alone know concrete GPIOs/Arduino peripheral APIs.
+The pure core defines narrow interfaces/types for:
 
-`MatrixOutput` is the mandatory physical LED gateway. Scene/render code can prepare logical RGB output, but every hardware frame passes through its `OutputLimiter` before brightness is applied. `MatrixOutput` owns the only `Adafruit_NeoPixel` instance.
+- `IClock` — monotonic microseconds;
+- `IImu` — timestamped raw + scaled accel/gyro and health/status;
+- `IButton` — semantic short/long events;
+- `ITouchZones` — optional normalized capacitive frame plus diagnostic/status access;
+- `IMatrixOutput` — prepared 8×8 RGB frame plus requested global brightness;
+- `IDiagnostics` — non-critical telemetry sink.
+
+Host tests implement or exercise these contracts without ESP32 headers. `NullTouchZones` is the permanent clean unavailable implementation; scenes therefore never need to know whether bare-board capacitive sensing succeeded physically.
+
+Board adapters under `src/board/` are the only layer allowed to know concrete GPIOs or Arduino peripheral APIs. `TouchZones` samples candidate pins and delegates baseline/noise/common-mode/hysteresis logic to the pure touch-normalization layer.
+
+`MatrixOutput` is the mandatory physical LED gateway: it owns the NeoPixel object and every frame passes through its pure `OutputLimiter` before hardware brightness is applied. The limiter enforces both the current global development ceiling and a provisional aggregate RGB PWM-load envelope. Scene code must never instantiate or call the LED driver directly.
+
+## ES-003 / ES-003A touch truth boundary
+
+GPIO1–GPIO7 are validated safe exposed native-touch candidates on the tested board. Physical characterization established a deliberately coarse product semantic:
+
+- `cap_a` and `cap_b` remain disabled;
+- `cap_combo` and its gated event represent broad common-mode edge contact;
+- a pinch-gated coarse slider exports active/position/strength only during strong multi-channel contact;
+- isolated fast local excursions may export bounded `noise_impulse` / `noise_event` values;
+- the noise signal is explicit external input, never model seed material or hidden randomness.
+
+Missing or noisy capacitive sensing still degrades cleanly; BOOT + IMU remain sufficient.
 
 ## ES-004 deterministic model
 
-The model owns a fixed 16×16/256-cell row-major `World`, compact 8-byte `Cell`, centralized stable material IDs, explicit PCG32 state, normalized `InputFrame`, lifecycle methods, bounded work counters and versioned replay hashing.
+The model substrate lives under `lib/espsand_core/` and is ordinary C++17 with no Arduino/ESP dependency.
 
-Same seed + reset/initial state + normalized per-tick inputs must replay identically. External touch/noise irregularity is explicit recorded input rather than hidden randomness.
+- `World` is a fixed 16×16, 256-cell, row-major array.
+- `Cell` is a fixed 8-byte value containing material ID, mass/fill, signed motion proxies, temperature/energy, material-specific auxiliary state and flags.
+- material identity and category metadata are centralized in one versioned registry with stable numeric IDs;
+- `Model` owns a PCG32 PRNG. Its seed, state and stream increment are explicit deterministic state; core logic must not use `rand()`, timestamps or platform entropy;
+- `InputFrame` is the normalized, hardware-independent input for one logical tick;
+- `Model::init`, `reset`, `reseed` and `step` provide the lifecycle seam used by later scenes/runtime work;
+- event and reaction `WorkBudget` instances provide fixed, saturating per-tick accounting seams;
+- the only ES-004 scene is a tiny deterministic fixture used to prove PRNG/state transitions. It is not a product hero scene.
 
-## ES-005 renderer and output policy
+The same seed, reset/initial state and `InputFrame` sequence must replay identically. External touch/noise irregularity affects a run only through recorded `InputFrame` values and does not perturb PRNG state unless future simulation code explicitly chooses to consume the PRNG for a defined rule.
 
-`WorldRenderer` is pure C++17 and deterministically maps each 2×2 logical block to one physical pixel. Beauty mode combines mass-weighted material colour with an importance accent so a small high-priority/emissive phenomenon is not erased by majority coverage. Positive temperature/energy contributes bounded warm emission.
+### State hash contract
 
-The renderer owns centralized material styles plus integer Q8 exposure and rational tone mapping. It also exposes material-ID, temperature and mass diagnostic projections. Unknown material IDs use a safe fallback instead of indexing outside the registry-aligned style table.
+`Model::state_hash()` is a stable FNV-1a 64-bit regression/replay identity over explicit, canonical little-endian fields. It covers the hash/material/cell schema versions, dimensions, scene/configuration, seed, tick, PRNG state, fixture state, budget counters and every cell in deterministic row-major order.
 
-`OutputLimiter` receives the final `Frame8x8` and requested global brightness. It applies the board hard ceiling first, then a deterministic dimensionless aggregate RGB PWM-load envelope. The default load envelope is deliberately provisional and is not a current/thermal safety claim.
+The hash deliberately does **not** serialize raw struct memory, so padding and host ABI do not define replay identity. It is not a cryptographic integrity or security mechanism. Intentional semantic changes may change the hash and must update the golden trace in the same change with an explanation.
 
-The current `MatrixOutput` gateway clamps runtime policy so code cannot raise brightness above the unvalidated 32/255 board development ceiling. Existing diagnostics automatically inherit the same load limiter because they use the same gateway.
+## ES-005 deterministic renderer and output budget
+
+`WorldRenderer` maps each fixed 2×2 logical block to one physical pixel. Beauty rendering combines mass-weighted material colour with a deterministic high-importance accent so small fire/lava/steam/tracer/biomass features are not erased merely because another material occupies most of the block.
+
+Material shading is centralized. Positive `Cell::temperature` contributes bounded warm logical emission; tracer/moss `aux` values provide bounded palette modulation. Integer Q8 exposure and rational tone mapping produce an 8-bit frame without hidden random dithering or floating-point replay dependencies.
+
+The renderer also exposes deterministic material-ID, temperature and mass diagnostic projections. Invalid material IDs use a safe fallback and are counted rather than indexing outside the style table.
+
+`OutputLimiter` is deliberately separate from simulation and material shading. It computes the applied global brightness from the requested value, the hard ceiling and a dimensionless aggregate RGB PWM-load envelope. Its default load value is a conservative software policy, not a milliamps/temperature claim.
 
 ## Scene lifecycle seam
 
-Product scenes primarily own deterministic initialization and mapping of normalized inputs to bounded simulation actions. They do not reimplement shared transport/thermal/reaction systems once those exist, and they never write physical LEDs directly.
+A later product scene should primarily define:
+
+- deterministic world initialization from model configuration/seed;
+- enabled materials/reactions;
+- mapping of normalized `InputFrame` fields/events to bounded simulation actions;
+- reset/reseed policy;
+- optional scene-local scripted events;
+- palette/render hints outside the pure material rules where needed.
+
+BOOT-derived `InputFrame::boot_event` carries semantic lifecycle intent, but ES-004 does not make the generic model silently reset itself from inside `step()`. The runtime/scene controller owns reset/reseed/scene-advance policy and calls the explicit lifecycle methods.
+
+A scene should **not** reimplement gravity transport, thermal diffusion, generic combustion or generic reaction scheduling once later core milestones provide those systems.
 
 ## Runtime safety
 
-- no blocking scene delays;
-- no unbounded frame-critical allocation/work;
-- fixed-size deterministic model storage;
-- bounded event/reaction chains;
-- one centralized physical LED-output budget;
-- diagnostics expose capped/dropped work and limiter state as runtime integration matures;
-- missing IMU/touch degrade rather than crash.
+- No blocking `delay()`-style scene logic.
+- No dynamic allocation in hot per-tick loops unless profiling proves it harmless and bounded.
+- Frame-critical world/model storage is fixed-size in ES-004.
+- Cap particles/agents/events explicitly.
+- Reaction chains must participate in bounded per-tick work rather than recurse without limit.
+- Watchdog friendliness is a design requirement.
+- Diagnostics should expose dropped/capped work rather than silently hiding overload.
+- Missing IMU is a degraded mode, not a crash condition.
+- Missing/noisy capacitive input is an unavailable optional capability, not a crash or scene dependency.
+- Every physical LED frame passes through the single centralized ES-005 output budget.
 
-## Hardware evidence boundary
+## Serial diagnostics
 
-Automated tests can validate renderer/limiter arithmetic, deterministic output and firmware compilation. They cannot establish a safe sustained LED current/temperature ceiling. Physical soak evidence remains required before raising or certifying the current provisional output limits.
+Development output should be machine-readable enough to support capture. Include as systems become active:
+
+- firmware/runtime identity;
+- current diagnostic/scene mode;
+- measured rates and update-time maxima;
+- IMU health, detected I2C address and scaled vectors;
+- detected button/tap/shake/touch events;
+- touch raw/baseline/noise/normalized/common-mode values during characterization;
+- model seed/state identity and reaction/event overflow counters once the runtime executes model scenes;
+- current global brightness/power limiter state.
+
+Human-readable compact lines are sufficient for v0; a rigid binary protocol is unnecessary.

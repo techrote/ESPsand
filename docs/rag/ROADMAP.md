@@ -6,31 +6,35 @@ This roadmap is the reviewed execution sequence. GitHub issues map directly onto
 
 ### A1. Repository/toolchain/CI + board profile
 
-Established PlatformIO, host-native tests, firmware build CI, formatting and the board characterization harness.
+Establish PlatformIO, host-native tests, firmware build CI, formatting, and a documented board profile/characterization harness. Unknown physical values remain explicitly marked until measured.
 
 ### A2. Board I/O runtime
 
-Established matrix output, QMI8658 raw IMU adapter, BOOT short/long handling, monotonic scheduling, serial diagnostics and host-testable interfaces.
+Implement matrix output, QMI8658C raw IMU driver/adapter, BOOT short/long state machine, monotonic clock, serial diagnostics, fake hardware interfaces and a simple diagnostic showcase.
 
 ### A3. No-component capacitive feasibility
+
+Enumerate safe candidate touch GPIOs from the validated board profile, implement diagnostic sampling/baselines/common-mode normalization, characterize the bare-board signal and expose only physically supported bounded semantics with graceful fallback.
 
 ES-003/003A established broad `cap_combo`, a pinch-gated coarse slider and an explicit bounded external noise impulse; reliable independent A/B buttons were not supported on the tested bare board.
 
 ## Milestone B — Deterministic micro-world
 
-### B1. World/material kernel — ES-004 complete
+### B1. World/material kernel — ES-004 baseline
 
-ES-004 established the host-testable 16×16 deterministic world, compact cell/material registry, model-owned seeded PCG32, fixed-step normalized `InputFrame`, explicit lifecycle seam, bounded event/reaction work counters, stable state hashing and golden replay fixtures.
+ES-004 establishes the host-testable 16×16 deterministic world, compact cell/material registry, model-owned seeded PCG32, fixed-step normalized `InputFrame`, explicit lifecycle seam, bounded event/reaction work counters, stable state hashing and golden replay fixtures.
+
+Subsequent B milestones build on these contracts rather than replacing deterministic state ownership. Intentional model-semantic changes must update the corresponding fixture/schema deliberately.
 
 ### B2. Renderer and power-aware output — ES-005 baseline
 
-ES-005 establishes deterministic 2×2 supersampled aggregation to 8×8, centralized material/thermal shading, explicit important-minority preservation, fixed-point exposure/tone mapping, pure diagnostic render modes, and a mandatory physical `MatrixOutput` limiter path.
+ES-005 establishes deterministic 2×2 supersampled aggregation to 8×8, important-minority preservation, centralized material/thermal shading, fixed-point exposure/tone mapping, pure render diagnostics, and a mandatory physical `MatrixOutput` limiter path.
 
-The current hardware policy uses a provisional 32/255 hard brightness ceiling plus a dimensionless aggregate frame-load envelope of 4096. These are software development limits, not validated current/temperature ratings. Physical soak evidence is still required before raising or certifying them.
+The current board policy remains intentionally provisional: 32/255 hard brightness ceiling plus a 4096-unit dimensionless aggregate frame-load envelope. These are development limits, not validated current/temperature ratings; sustained physical soak evidence is still required before raising or certifying them.
 
-### B3. Transport, heat, gas and reaction engine — next
+### B3. Transport, heat, gas and reaction engine
 
-Add gravity-directed transport, density/buoyancy tendency, liquid viscosity differences, bounded momentum proxy if beneficial, gas movement, heat exchange and centralized bounded reactions. Integrate normalized IMU gravity and motion-energy inputs through the ES-004 `InputFrame` contract and render them through the ES-005 output path.
+Add gravity-directed transport, density/buoyancy tendency, liquid viscosity differences, bounded momentum proxy if beneficial, gas movement, heat exchange and centralized bounded reactions. Integrate normalized IMU gravity and motion-energy inputs through the ES-004 `InputFrame` contract and render through the ES-005 output path.
 
 ## Milestone C — Hero vertical slices
 
@@ -54,7 +58,7 @@ Implement concentration advection/diffusion and dramatic concentration-dependent
 
 ### D2. v0 integration/release
 
-Tune scene order, defaults, transitions, button semantics, motion thresholds, optional touch mappings, serial diagnostics, brightness policy, soak stability, documentation and release metadata.
+Tune scene order, defaults, transitions, button semantics, motion thresholds, optional touch mappings, serial diagnostics, brightness policy, soak stability, documentation and release metadata. Capture explicit hardware-validation checklist/results where available.
 
 ## Dependency graph
 
@@ -81,6 +85,8 @@ D1
 D2
 ```
 
+A3 may proceed after A2 and does not block B1 if touch remains unavailable.
+
 ## Cross-cutting invariants
 
 Every milestone preserves:
@@ -97,4 +103,13 @@ Every milestone preserves:
 
 ## Deferred post-v0 directions
 
-Do not implement unless explicitly promoted by a future issue: multi-board distributed chunks, ESP-NOW boundary exchange, battery power, enclosure/coating-specific calibration, PC/web visualizer, user-authored materials/scenes, and richer `realref` integration.
+Document but do not implement unless explicitly promoted by a future issue:
+
+- multiple boards as distributed simulation chunks;
+- physical edge sensing/topology discovery;
+- ESP-NOW boundary exchange;
+- battery power;
+- enclosures/coating-specific calibration;
+- PC/web visualizer;
+- user-authored materials/scenes;
+- richer physical-reference integration with `realref`.

@@ -12,49 +12,113 @@ The repository's `python tools/ci.py` is the reproducible verification entry poi
 
 The pinned native PlatformIO environment compiles pure core code with C++17 plus `-Wall -Wextra -Wpedantic -Werror` and runs Unity tests.
 
-The ES-004 suite locks the deterministic world/material/PRNG/InputFrame substrate, including exact PRNG output, state-hash trace, reset/reseed behaviour, bounds/accounting, work budgets and randomized replay stress.
+The current suite covers foundation/board/input logic plus the ES-004 deterministic substrate. ES-004 specifically verifies:
 
-ES-005 adds renderer/output-policy coverage for:
+- the fixed 16×16/256-cell world, row-major access and boundary rejection;
+- centralized stable material IDs and material/mass accounting;
+- exact PCG32 fixture output;
+- same-seed/same-input replay identity;
+- different-seed controlled stochastic divergence;
+- reset and reseed semantics;
+- event/reaction work-budget saturation;
+- external touch/noise input separation from PRNG state;
+- input sanitization for out-of-range, NaN and infinite values;
+- a versioned golden multi-tick state trace;
+- 5,000 randomized ticks on duplicate models while checking invariants, accounting, bounded work and randomized out-of-bounds probes.
 
-- byte-identical output for a fixed world and render configuration;
+ES-005 adds renderer/output-policy tests for:
+
+- byte-identical output from fixed world/configuration;
 - 16×16 -> 8×8 2×2 aggregation;
-- preservation of a small high-priority fire cell within a water-majority block;
-- distinct centralized palette identities;
-- deterministic beauty/material/temperature/mass diagnostic modes;
-- safe handling/counting of an invalid material ID;
-- hard brightness-ceiling clamping;
-- aggregate dense-frame load limiting;
-- sparse-frame preservation under the load budget;
+- preservation of one low-mass hot/fire cell inside a water-majority output block;
+- distinct centralized water/lava/moss palette identities;
+- deterministic beauty/material-ID/temperature/mass diagnostic modes;
+- safe invalid-material fallback/counting;
+- hard brightness-ceiling clamping and dense-frame aggregate-load limiting;
+- sparse-frame preservation under the same output budget;
 - fail-dark zero-load policy;
 - randomized full-world render repeatability.
 
-Later milestones add transport conservation, density/buoyancy, heat, reactions and biology only when those systems actually exist.
+Later milestones add transport conservation, density/buoyancy, heat, reactions and biology when those systems actually exist. Do not add placeholder assertions that imply unimplemented physics is validated.
 
 ### 2. Firmware compile
 
-CI compiles both the normal `esp32s3` firmware and the `esp32s3_bringup` minimal target with the pinned toolchain. Both link the shared core library, including the ES-005 renderer/limiter sources.
+CI compiles both:
+
+- the normal `esp32s3` firmware target;
+- the `esp32s3_bringup` minimal target.
+
+Both use the repository's pinned Espressif32/Arduino configuration and compile the shared core library. Project warnings are treated seriously; host-native core warnings are errors.
 
 ### 3. Formatting/static checks
 
 `tools/format.py --check` applies the repository `.clang-format` contract to C/C++ sources. Keep the quality-tool surface deliberately small and reproducible.
 
-## Deterministic traces
+## Deterministic traces — ES-004 contract
 
-`Model::state_hash()` remains the ES-004 versioned FNV-1a replay identity over canonical explicit state. Renderer output is not inserted into the model hash because rendering is a pure projection and does not affect future simulation state.
+Important model milestones keep compact fixtures containing seed/configuration, deterministic input frames, expected hashes and selected counters.
 
-ES-005 instead tests byte-identical render frames directly. An intentional palette/aggregation/tone-map change should update renderer expectations in the same PR and explain the visual-semantic change.
+`test/test_simulation_core/test_main.cpp` locks two foundational sequences:
+
+1. PCG32 seed 42, default stream, first six outputs:
+
+```text
+2707161783
+2068313097
+3122475824
+2211639955
+3215226955
+3421331566
+```
+
+2. Model seed `0x0123456789ABCDEF`, event budget 2, reaction budget 3:
+
+```text
+initial      0x4943A6C732CA020D
+after tick 1 0x75A4B3C9249EF546
+after tick 2 0xFC14CC3D7A9C7408
+after tick 3 0xB411D621F3D3F1C6
+after tick 4 0x8F0F30D22E87FB14
+```
+
+The final tick also locks event-budget saturation at `used=2`, `dropped=1`.
+
+`Model::state_hash()` is a versioned FNV-1a 64 regression/replay identity over canonical explicit fields, including PRNG state and the row-major world. It is deliberately **not cryptographic** and must not be used as an integrity/authentication mechanism.
+
+An intentional model-semantic change may alter these fixtures. Update the fixture and explanatory documentation in the same PR; an unexplained hash drift is a regression.
+
+Renderer output is not part of the model state hash because rendering is a pure projection and cannot affect future model evolution. ES-005 tests byte-identical render frames directly instead.
 
 ## Hardware validation gates
 
-Some checks require the actual device. Examples include matrix electrical/thermal behaviour, real frame rate, current draw, and extended soak stability.
+Some checks require the actual device. Issues should identify them explicitly and provide a concise procedure plus expected evidence.
 
-ES-005 automated tests prove limiter arithmetic and that `MatrixOutput` owns the limiter path. They do **not** prove that 32/255 or the 4096 software load envelope is a safe sustained electrical setting. Those values remain provisional pending physical current/thermal evidence.
+Examples:
 
-For sustained-output validation, prefer a 30–60 minute or longer soak with representative and deliberately dense patterns. Record the applied limiter state and measured evidence rather than inferring safety from a short visual check.
+- actual matrix GPIO/colour order/pixel order;
+- IMU address, axis mapping and rate;
+- BOOT short/long thresholds;
+- touch-capable candidate GPIO behaviour;
+- LED current/thermal comfort at configured brightness;
+- real frame rate and loop timing;
+- 30–60 minute or longer soak without resets.
+
+A remote agent may complete code and CI but must not claim one of these passed without user-provided or machine-collected board evidence. ES-004 itself changes only pure model contracts and does not introduce a new physical-board acceptance gate.
+
+ES-005 deliberately leaves its 32/255 hard brightness ceiling and 4096-unit aggregate PWM-load envelope `NEEDS_PHYSICAL_VALIDATION`. Automated tests prove limiter arithmetic and gateway integration; they do not prove a sustained electrical/thermal safety rating.
 
 ## Serial evidence
 
-Diagnostics should remain compact and machine-readable. As runtime integration grows, useful fields include scene/mode, frame/simulation rates, IMU status, seed/hash/work counters, and output-limiter requested/applied brightness plus load state.
+Diagnostics should make hardware validation easy to paste into an issue/PR. Prefer concise lines such as:
+
+```text
+imu ok rate=198Hz g=(+0.03,+0.98) shake=0.02
+render fps=60.0 sim=120Hz max_tick_us=...
+touch ch=... raw=... base=... z=...
+scene=lava_water seed=...
+```
+
+Exact schema may differ. Model seed/hash/budget and output-limiter requested/applied/load diagnostics should be added as the runtime begins executing product simulation scenes.
 
 ## PR checklist
 
@@ -67,10 +131,10 @@ Every implementation PR should state:
 - firmware build result;
 - automated CI result;
 - required hardware validation still outstanding;
-- docs updated for any resolved assumption/model/render contract.
+- docs updated for any resolved assumption or model contract.
 
 ## Merge rule
 
-An autonomous issue explicitly authorizes the implementing agent to merge its own PR only after required automated checks pass and any issue-specific non-deferrable acceptance gates are satisfied.
+An autonomous issue explicitly authorizes the implementing agent to merge its own PR **only after the required automated checks pass** and any issue-specific non-deferrable acceptance gates are satisfied.
 
-If CI infrastructure itself is broken for reasons unrelated to the PR, fix or explicitly reconcile it; do not merge around it.
+If CI infrastructure itself is broken for reasons unrelated to the PR, fix or explicitly reconcile it; do not simply merge around it.

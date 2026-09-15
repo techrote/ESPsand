@@ -2,57 +2,84 @@
 
 ## Current identification state
 
-The tested target is the Waveshare ESP32-S3-Matrix family board used by this repository: ESP32-S3, onboard 8×8 RGB chain, QMI8658-class IMU, BOOT button and USB. Three boards are available; v0 remains single-board only. `docs/hardware/BOARD_PROFILE.md` is the field-by-field hardware evidence record.
+The owner's boards are identified as ESP32-S3 8×8 RGB-matrix boards with a QMI8658C-class six-axis IMU, BOOT button and USB. Three are available; v0 still targets one board only.
+
+The feature set closely matches Waveshare `ESP32-S3-Matrix` SKU 27119, but the exact owner PCB/revision has **not yet been physically confirmed**. `docs/hardware/BOARD_PROFILE.md` is now the authoritative field-by-field evidence record.
+
+Do not promote likely product-family values to facts merely because public pinouts match.
 
 ## Foundation compile profile
 
-PlatformIO's generic `esp32-s3-devkitc-1` definition is used only as a compiler/Arduino-core base. The repository overrides the physical target's FH4R2 memory profile: 4 MB flash plus 2 MB PSRAM.
+ES-001 uses PlatformIO's generic `esp32-s3-devkitc-1` definition as a reproducible **compile profile** with the Arduino framework. It is not the hardware identity.
+
+The ES-001 runtime probe deliberately avoids driving matrix, IMU, BOOT or touch-candidate pins. It reports chip/flash/PSRAM/runtime identity plus the current status of provisional profile values.
+
+## Hardware facts to reconcile
+
+Record, with evidence:
+
+- exact product/revision marking;
+- ESP32-S3 module/chip revision, flash and PSRAM if present;
+- RGB matrix protocol/type, data GPIO, pixel ordering and colour order;
+- QMI8658C I2C SDA/SCL pins, address and interrupt pins;
+- IMU physical axis orientation relative to matrix rows/columns;
+- BOOT button GPIO and active level;
+- exposed free GPIOs;
+- which free GPIOs support native ESP32-S3 touch sensing;
+- conflicts between touch candidates and matrix/IMU/USB/boot functions;
+- practical matrix brightness before board temperature/current becomes undesirable.
 
 ## Hardware abstraction boundary
 
-Board drivers do not own simulation semantics. The pure core defines narrow interfaces for clock, IMU, button, optional touch input, matrix output and diagnostics. `lib/espsand_core/` remains free of Arduino/ESP headers.
+Board drivers must not own simulation semantics. Use narrow interfaces such as:
 
-The RGB chain is physically calibrated as GPIO14, RGB byte order, linear row-major pixel order in the documented primary orientation. `MatrixOutput` is the sole NeoPixel owner and physical write gateway.
+- `IMatrixOutput`: accept a prepared 8×8 RGB frame plus global luminance/current limit;
+- `IImu`: timestamped raw accel/gyro and health/status;
+- `IButton`: debounced press-duration events;
+- `ITouchZones`: normalized relative disturbances and availability/quality;
+- `IClock`: monotonic microsecond/millisecond time;
+- `IDiagnostics`: non-blocking serial telemetry.
+
+Host fakes should implement these interfaces or an equivalent seam so orchestration and simulation can test without hardware.
+
+The foundation enforces the first architectural part of this boundary: `lib/espsand_core/` is host-testable C++ with no Arduino/ESP headers, while embedded diagnostics live under `src/board/`.
 
 ## IMU requirements
 
-Raw acceleration/gyro remain the hardware source. Board-independent input work derives projected gravity and motion semantics before model code receives normalized values. The calibrated in-plane transform is explicit and host-tested.
+Prefer raw accelerometer + gyro access. Do not rely solely on fused attitude. Useful channels are:
 
-## LED constraints — ES-005 policy
+- low-pass acceleration direction -> projected gravity;
+- high-pass/transient acceleration -> shake/impulse;
+- gyro magnitude and axis rates -> rotation/stirring cues;
+- confidence/quality gates when acceleration magnitude departs far from ~1 g.
 
-The 64 onboard RGB LEDs can produce substantial aggregate load and heating. No scene may request arbitrary physical brightness directly.
+The matrix-plane orientation transform must be explicit and testable.
 
-ES-005 adds a two-stage centralized software budget inside the physical `MatrixOutput` gateway:
+## LED constraints
 
-1. a hard global brightness ceiling;
-2. a deterministic aggregate RGB PWM-load envelope that can reduce dense frames further.
+The 64 LEDs can draw substantial current at high simultaneous brightness. v0 therefore requires a single centralized output budget rather than scene-specific arbitrary brightness.
 
-The current provisional defaults are:
+The likely Waveshare-family vendor explicitly warns that excessive brightness can rapidly heat and damage the board. This warning does not provide a numeric safe ceiling. Until measured on the actual board, use a conservative software ceiling and keep its status `NEEDS_PHYSICAL_VALIDATION`.
 
-- hard brightness ceiling: **32/255**;
-- aggregate frame-load limit: **4096 dimensionless software load units**.
+ES-005 implements that centralized path inside `MatrixOutput`. The current provisional policy is a hard brightness ceiling of **32/255** plus an aggregate frame-load limit of **4096 dimensionless software load units**, where load is derived from `sum(R+G+B) * brightness / 255`. The load figure is not milliamps and is not a measured safe-current or safe-temperature rating.
 
-The load unit is `sum(R+G+B) * brightness / 255`; it is not milliamps. The value 4096 is deliberately a conservative development envelope, not a measured current or thermal rating. It allows sparse bright features to retain contrast while making dense full-white output dimmer than the hard ceiling.
+The second limit intentionally reduces dense output further than sparse highlights; with the current deterministic formula, a 64-pixel full-white frame requested at 255 is reduced to 21/255. Runtime policy may lower/tune the output budget, but `MatrixOutput` clamps its brightness ceiling so code cannot raise physical brightness above the current unvalidated 32/255 hard cap.
 
-The board gateway will not allow runtime policy to raise brightness above 32/255 while that hard ceiling remains unvalidated. A later evidence-backed hardware change may revise it deliberately.
+Before raising or certifying the hard ceiling, perform sustained physical validation using representative sparse scenes and deliberately dense RGB/white patterns. Prefer an inline USB current meter and temperature probe if available, exercise candidate settings in small increments, soak for 30–60 minutes or longer, and record pattern, ambient conditions, applied limiter state, current/temperature where available, and any resets/USB instability/colour shift. Stop on undesirable heating. Do not infer a sustained safe setting from a short visual check.
 
-### Thermal/current evidence boundary
+## Capacitive experiment constraints
 
-The vendor warning about excessive brightness establishes a qualitative hazard but no numeric safe limit. Physical validation is therefore still required before documenting a sustained safe ceiling.
+The ESP32-S3 supports native touch sensing on GPIO1–GPIO14 at the silicon level, but exact usable pins depend on board routing.
 
-Use representative scenes and dense stress patterns, preferably with an inline USB current meter and temperature probe, and soak candidate settings for an extended period. Record pattern, ambient conditions, applied limiter state, duration, current/temperature where available, and any resets/USB instability/colour shift. Stop on undesirable heating. Do not promote a brief visual test to a safe sustained-current claim.
+The desired v0 experiment uses **no added components**. Candidate exposed pads/traces may act as poor-but-useful electrodes. The project values large relative disturbance detection over precise buttons.
 
-## Capacitive experiment result
+Requirements:
 
-GPIO1–GPIO7 are safe exposed native-touch candidates on the tested board. Bare-board characterization supports broad `cap_combo`, a pinch-gated coarse slider, and an explicit bounded external noise impulse. Reliable independent A/B button semantics are not exposed. Missing/noisy capacitive sensing remains optional and degrades cleanly.
+- never repurpose a pin required by matrix, IMU, BOOT or USB;
+- baseline must adapt slowly to environment drift;
+- use change/derivative and common-mode rejection where practical;
+- expose raw/normalized values over serial for characterization;
+- implement an unavailable/disabled fallback path;
+- do not make capacitive success a blocker for the rest of ESPsand.
 
-## Known routing summary
-
-- RGB matrix data: GPIO14;
-- QMI8658 SDA/SCL: GPIO11/GPIO12;
-- QMI8658 interrupts: GPIO10/GPIO13;
-- BOOT: GPIO0 active-low;
-- USB D-/D+: GPIO19/GPIO20;
-- safe exposed touch candidates: GPIO1–GPIO7.
-
-Do not repurpose matrix, IMU, BOOT or USB pins for scene logic.
+A future conformal coating may change sensitivity and baseline; touch logic should tolerate recalibration rather than embed absolute factory thresholds.
