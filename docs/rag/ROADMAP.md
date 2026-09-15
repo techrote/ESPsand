@@ -1,6 +1,6 @@
 # ESPsand v0 implementation roadmap
 
-This roadmap is the reviewed execution sequence. GitHub issues map directly onto these milestones and should normally be completed serially.
+This roadmap is the reviewed execution sequence. GitHub issues map directly onto these milestones and should normally be completed serially, with physical-board feedback allowed to create focused corrective passes between numbered scene milestones.
 
 ## Milestone A — Foundation and hardware truth
 
@@ -24,7 +24,7 @@ Fixed 16x16 world, stable materials, model-owned PCG32, normalized `InputFrame`,
 
 ### B2. ES-005 — renderer/output budget
 
-Deterministic 2x2 supersampling to 8x8, minority preservation, material/thermal shading and mandatory `MatrixOutput` limiter. Current board policy remains provisional at 32/255 hard brightness plus 4096 software load units.
+Deterministic 2x2 aggregation to 8x8, minority preservation, material/thermal shading and mandatory `MatrixOutput` limiter.
 
 ### B3. ES-006 — shared dynamics
 
@@ -40,38 +40,65 @@ First complete product runtime/scene, normalized IMU conditioning, shared materi
 
 Adds finite energetic scenes and real multi-scene BOOT cycling while reusing shared reactions/fire lifetime.
 
-### C3. ES-009 — Moss Garden + Mites and first readability baseline
+### C3. ES-009 — Moss Garden + Mites
 
-ES-009 adds moisture-dependent ecology, bounded mite agents, full-perimeter product worlds and render-only temporal persistence. It also removes redundant product wall rings and first re-composes the chemistry scenes for larger 8x8-readable shapes.
+Adds slow moisture-dependent ecology and bounded mite-like agents while keeping water transport shared.
 
-The ES-009 baseline reached **91/91 native tests**, product firmware at 10.6% RAM / 34.8% flash, and bring-up at 9.5% / 31.2%.
+## Physical readability/tuning passes after ES-009
 
-### C3.1. Issue #35 — structured-diversity readability correction
+Physical board use exposed several display-specific issues that were more important to correct before adding another scene.
 
-Direct physical feedback after ES-009 showed the first re-composition had moved too far toward large homogeneous blocks. Issue #35 therefore refines the presentation contract before adding more scene breadth:
+### Full-frame/readability correction
 
-- Beauty projection now preserves how many of the four logical subcells actually occupy each physical LED, preventing a one-cell stream from appearing as full as a four-cell block;
-- water/oil/lava/moss receive mild deterministic structural contrast based on stable coordinates, material boundaries and actual motion—not PRNG/twinkle noise;
-- Lava uses an irregular water shoreline, varied fill depth, thin meandering hot stream and falling refill rivulets;
-- Sodium uses an uneven pool, separated single drops and falling water rivulets;
-- Oil uses shallow irregular water, discontinuous fuel ribbons/pockets and a sparse left-originating ignition front;
-- Moss model state is intentionally unchanged; the renderer exposes structure in its large wet/green bodies;
-- the no-wall-ring/full-28-LED-perimeter contract is preserved;
-- dedicated anti-blockiness tests guard initial and settled product projections without replacing causal scene tests.
+Completed before this pass:
 
-The implementation probe reached **95/95 native tests**, including 4/4 new readability tests, with product firmware at 10.6% RAM / 34.9% flash and bring-up unchanged at 9.5% / 31.2%.
+- removed redundant product wall rings so the whole perimeter is content space;
+- corrected 2x2 coverage projection so one logical sample no longer looks like a full block;
+- added deterministic structural contrast and temporal persistence;
+- replaced broad slab-heavy chemistry layouts with more structured topologies.
 
-Subjective success still requires the physical board: the goal is coherent material bodies with visible internal structure, not either broad flat slabs or random confetti.
+### Sparse-touch-pseudo-HDR baseline — current
+
+Direct physical feedback then showed that even the improved layouts still started/rested with too much material and that the LED chain's useful perceived code range is concentrated near the low end.
+
+Current baseline therefore establishes:
+
+- shared product material population ceiling of **15 logical cells per material**;
+- sparse starts for all four scenes;
+- slower/cap-aware autonomous replenishment and Moss growth;
+- 720-tick host regression checking every material after every tick;
+- pinch-slider redefined as direct spatial **secondary-material/actor** control:
+  - Lava -> water;
+  - Sodium -> water;
+  - Oil -> local ignition/fire;
+  - Moss -> mite;
+- direct slider actions occur after the current physics pass so the touched state is visible near selected X before the next physics tick;
+- Moss begins with one autonomous mite instead of pre-populating more agents;
+- Beauty ordinary output recentered into **0..127**, visually centred around ~63;
+- **128..255** reserved for sparse pseudo-HDR hot/reactive/agent state;
+- product scalar request/ceiling permit 255 so that code-domain distinction can reach the LEDs;
+- the existing **4096-unit aggregate frame-load limiter remains mandatory** and is the automatic dense-frame governor;
+- no electrical/thermal certification is inferred from that software policy.
+
+This tuning pass must be physically reviewed before using its perceptual thresholds as permanent release constants.
 
 ## Milestone D — Breadth and showcase polish
 
 ### D1. Tracer/Dissolution Plume + one additional scene
 
-Next after physical review of the corrected four-scene baseline: implement concentration advection/diffusion and dramatic concentration-dependent colour. Apply the structured-diversity lesson from #35 from the start. Select one additional behavior by novelty-per-complexity after profiling the existing scenes.
+Next planned breadth milestone after physical validation of the sparse/HDR baseline: implement concentration advection/diffusion and dramatic concentration-dependent colour. New scenes should begin sparse and build complexity through state/input rather than pre-filling large material regions.
 
 ### D2. v0 integration/release
 
-Tune scene order/defaults/transitions, motion thresholds, optional touch mappings, presentation persistence, coverage/structural contrast, palette, serial diagnostics, brightness policy, soak stability, documentation and release metadata. Physical validation evidence should directly inform this pass.
+Tune scene order/defaults/transitions, motion thresholds, optional touch mappings, palette/contrast, persistence, pseudo-HDR thresholds, aggregate-load policy, soak stability, serial diagnostics and release metadata.
+
+Release tuning should be driven by actual board evidence collected from the current four scenes, particularly:
+
+- perceived ordinary centre/max;
+- pseudo-HDR contrast usefulness;
+- touch-location correspondence;
+- sustained current/temperature behavior;
+- material population/readability balance.
 
 ## Dependency graph
 
@@ -93,7 +120,7 @@ C2
  ↓
 C3
  ↓
-C3.1
+physical readability/tuning
  ↓
 D1
  ↓
@@ -108,14 +135,14 @@ Every milestone preserves:
 - no mandatory network/cloud/app runtime;
 - deterministic fixed-seed model with explicit model-owned randomness;
 - host tests for pure logic;
-- centralized LED output budget;
+- one centralized physical LED output path;
 - hardware abstraction seams;
 - BOOT + IMU sufficiency without touch;
 - bounded per-tick work/no unbounded scheduler catch-up;
-- tracked-mass conservation for shared transport/reactions except documented scene-owned injection/growth;
-- physical display perimeter is content space, not implicit containment UI;
-- renderer/presentation state never feeds back into deterministic simulation;
-- readability favors structured information density over both monolithic slabs and arbitrary decorative noise;
+- tracked-mass conservation for shared transport/reactions except documented scene-owned creation;
+- full physical perimeter remains content space;
+- current product scenes stay inside the sparse material-population contract;
+- ordinary/pseudo-HDR brightness semantics remain presentation-only and cannot affect model state;
 - explicit distinction between automated evidence and physical-board validation.
 
 ## Deferred post-v0 directions
