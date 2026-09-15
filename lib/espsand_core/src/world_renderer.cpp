@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 
 #include <espsand/sim/materials.hpp>
 
@@ -112,6 +113,101 @@ std::uint16_t coverage_scale_q8(std::uint8_t occupied_samples) noexcept {
   // Keep thin one-cell structures visible while preserving a clear difference between 1/4 and 4/4 fill.
   constexpr std::array<std::uint16_t, 5> kCoverageScale{{0U, 136U, 176U, 216U, 256U}};
   return kCoverageScale[std::min<std::size_t>(occupied_samples, 4U)];
+}
+
+bool structural_material(sim::MaterialId material) noexcept {
+  return material == sim::MaterialId::kWater || material == sim::MaterialId::kOil ||
+         material == sim::MaterialId::kLava || material == sim::MaterialId::kMoss;
+}
+
+sim::MaterialId dominant_material_for_block(const sim::World& world, std::size_t out_x,
+                                            std::size_t out_y) noexcept {
+  std::array<std::uint16_t, sim::kMaterialCount> mass{};
+  const std::size_t base_x = out_x * 2U;
+  const std::size_t base_y = out_y * 2U;
+  for (std::size_t local_y = 0; local_y < 2U; ++local_y) {
+    for (std::size_t local_x = 0; local_x < 2U; ++local_x) {
+      const sim::Cell* cell = world.try_cell(static_cast<int>(base_x + local_x),
+                                             static_cast<int>(base_y + local_y));
+      if (cell == nullptr || cell->material == sim::MaterialId::kEmpty || cell->mass == 0U ||
+          !sim::is_valid_material(cell->material)) {
+        continue;
+      }
+      const std::size_t index = sim::material_index(cell->material);
+      mass[index] = static_cast<std::uint16_t>(mass[index] + cell->mass);
+    }
+  }
+
+  sim::MaterialId dominant = sim::MaterialId::kEmpty;
+  std::uint16_t dominant_mass = 0;
+  for (std::size_t index = 1; index < sim::kMaterialCount; ++index) {
+    if (mass[index] > dominant_mass) {
+      dominant_mass = mass[index];
+      dominant = static_cast<sim::MaterialId>(index);
+    }
+  }
+  return dominant;
+}
+
+std::uint8_t same_material_neighbors(const sim::World& world, std::size_t out_x,
+                                     std::size_t out_y, sim::MaterialId material) noexcept {
+  constexpr std::array<std::array<int, 2>, 4> kDirections{{
+      {{1, 0}},
+      {{-1, 0}},
+      {{0, 1}},
+      {{0, -1}},
+  }};
+  std::uint8_t count = 0;
+  for (const auto& direction : kDirections) {
+    const int neighbor_x = static_cast<int>(out_x) + direction[0];
+    const int neighbor_y = static_cast<int>(out_y) + direction[1];
+    if (neighbor_x < 0 || neighbor_y < 0 ||
+        neighbor_x >= static_cast<int>(io::kMatrixWidth) ||
+        neighbor_y >= static_cast<int>(io::kMatrixHeight)) {
+      continue;
+    }
+    if (dominant_material_for_block(world, static_cast<std::size_t>(neighbor_x),
+                                    static_cast<std::size_t>(neighbor_y)) == material) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+std::uint16_t motion_for_block(const sim::World& world, std::size_t out_x, std::size_t out_y,
+                               sim::MaterialId material) noexcept {
+  const std::size_t base_x = out_x * 2U;
+  const std::size_t base_y = out_y * 2U;
+  std::uint16_t motion = 0;
+  for (std::size_t local_y = 0; local_y < 2U; ++local_y) {
+    for (std::size_t local_x = 0; local_x < 2U; ++local_x) {
+      const sim::Cell* cell = world.try_cell(static_cast<int>(base_x + local_x),
+                                             static_cast<int>(base_y + local_y));
+      if (cell == nullptr || cell->material != material || cell->mass == 0U) {
+        continue;
+      }
+      motion = static_cast<std::uint16_t>(
+          motion + std::abs(static_cast<int>(cell->motion_x)) +
+          std::abs(static_cast<int>(cell->motion_y)));
+    }
+  }
+  return motion;
+}
+
+std::uint16_t structural_scale_q8(const sim::World& world, std::size_t out_x,
+                                  std::size_t out_y, sim::MaterialId material) noexcept {
+  if (!structural_material(material)) {
+    return 256U;
+  }
+  constexpr std::array<std::uint16_t, 4> kGrainScale{{238U, 248U, 258U, 268U}};
+  const std::size_t phase =
+      (out_x * 3U + out_y * 5U + sim::material_index(material) * 7U) % kGrainScale.size();
+  const std::uint8_t same_neighbors = same_material_neighbors(world, out_x, out_y, material);
+  const std::uint16_t edge_bonus = static_cast<std::uint16_t>((4U - same_neighbors) * 5U);
+  const std::uint16_t motion_bonus =
+      std::min<std::uint16_t>(18U, motion_for_block(world, out_x, out_y, material) / 3U);
+  return static_cast<std::uint16_t>(
+      std::min<std::uint16_t>(292U, kGrainScale[phase] + edge_bonus + motion_bonus));
 }
 
 std::uint8_t tone_map(std::uint32_t linear, std::uint16_t exposure_q8) noexcept {
@@ -242,6 +338,9 @@ RenderResult WorldRenderer::render(const sim::World& world,
       aggregate.g /= total_mass;
       aggregate.b /= total_mass;
       scale_color_q8(aggregate, coverage_scale_q8(occupied_samples));
+
+      const sim::MaterialId dominant = dominant_material_for_block(world, out_x, out_y);
+      scale_color_q8(aggregate, structural_scale_q8(world, out_x, out_y, dominant));
 
       const std::uint8_t weight = accent_weight(accent_importance);
       if (weight != 0U) {
