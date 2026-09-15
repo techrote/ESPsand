@@ -167,7 +167,7 @@ void Model::step(const InputFrame& input) noexcept {
     break;
   case SceneId::kLavaWater:
     lava_water_stats_ =
-        lava_water_scene_.before_dynamics(world_, prng_, frame, tick_, event_budget_);
+        lava_water_scene_.before_dynamics({world_, prng_, frame, tick_, event_budget_});
     dynamics_stats_ = dynamics_engine_.step(world_, frame, tick_, event_budget_, reaction_budget_);
     break;
   case SceneId::kDeterminismFixture:
