@@ -35,6 +35,7 @@ class LavaWaterScene {
 public:
   void initialize(World& world, Pcg32& prng) const noexcept;
   LavaWaterSceneStats before_dynamics(LavaWaterTickContext context) const noexcept;
+  void after_dynamics(LavaWaterTickContext context, LavaWaterSceneStats& stats) const noexcept;
 };
 
 } // namespace espsand::sim
