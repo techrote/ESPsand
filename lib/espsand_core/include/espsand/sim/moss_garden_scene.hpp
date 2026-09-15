@@ -36,7 +36,6 @@ struct MossGardenSceneStats {
   std::uint16_t starved = 0;
   std::uint16_t rain_pulses = 0;
   std::uint16_t seed_pulses = 0;
-  std::uint16_t touch_mite_spawns = 0;
   std::uint16_t scatter_events = 0;
 };
 
