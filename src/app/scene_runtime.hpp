@@ -25,10 +25,14 @@ public:
 
 private:
   sim::InputFrame compose_input() const noexcept;
+  void configure_scene(sim::SceneId scene, std::uint64_t seed);
   void run_simulation_tick(std::uint64_t now_us);
   void render_scene();
   void handle_button(io::ButtonEvent event);
   void emit_telemetry(std::uint64_t now_us);
+  void emit_scene_telemetry(const sim::MaterialTotals& totals, const sim::TickWorkStats& work,
+                            const sim::DynamicsStats& dynamics,
+                            const render::OutputDecision& output);
   void clear_one_shot_inputs() noexcept;
 
   board::MonotonicClock clock_{};

@@ -18,42 +18,49 @@ Scenes are curated demonstrations built on shared material/reaction primitives. 
 
 The physically rejected independent `cap_a` / `cap_b` semantics are **not** resurrected for this scene. Lava + Water remains fully usable with BOOT + IMU when capacitive sensing is unavailable.
 
-**Lifecycle:** short BOOT restores the exact configured seed/initial state. While this is the only product scene, long BOOT follows the product “next scene” intent by wrapping to Lava + Water with the next deterministic seed. ES-008 will replace that one-scene wrap with real scene advance when Scene 2 exists.
+**Lifecycle:** short BOOT restores the exact configured seed/initial state. Long BOOT advances to Sodium-like + Water under the ES-008 three-scene product catalogue.
 
 **Must show / automated evidence:** fixed-seed host tests require deterministic initialization/replay, meaningful multi-axis tilt divergence, lava/water contact producing persistent crust plus steam, bounded shake fracture, bounded touch injection, exact reset, renderer distinction and long randomized bounded replay. Physical visual quality and handling response remain a board-validation gate; CI cannot claim those observations.
 
-## Scene 2 — Sodium-like Reactive Particle + Water
+## Scene 2 — Sodium-like Reactive Particle + Water — ES-008 baseline
 
-**Visual identity:** bright reactive particle skittering/fizzing over blue water with sharp white/yellow gas/heat flashes.
+**Visual identity:** small pale/warm reactive particles moving over a blue water field, with sharp fire/steam/heat events and buoyant gas after contact.
 
-**Autonomous loop:** one or more bounded reactive particles encounter water and consume themselves while emitting gas/impulse.
+**Autonomous loop:** a deterministic water reservoir contains a small finite set of sodium-like particles, including one seeded near-contact placement. Particles use the shared gravity/density transport. Contact with water uses the centralized ES-006 sodium-like + water reaction, creating finite fire plus steam and the common bounded reaction impulse. Sparse autonomous reactant injection and slower water refill keep the scene demonstrable without touch.
 
-**Inputs:**
-- cap A: inject one reactive particle;
-- cap B: refill/redistribute water;
-- shake: increases encounter/agitation;
-- tap: optional dramatic but bounded reaction impulse.
+**Implemented inputs:**
 
-**Must show:** local movement caused by reaction impulse, finite reactant lifetime, no unbounded flash loop.
+- tilt redirects the ordinary shared particle/liquid transport;
+- shake/tap/motion increase the shared bounded mobility/disturbance term and therefore encounter rate without creating scene-local reaction loops;
+- the coarse slider injects one sodium-like cell near the selected horizontal position at a capped cadence;
+- combo inserts one adjacent sodium-like/water contact pair into available interior space, after which the shared reaction engine performs the reaction and impulse;
+- the scene remains complete with BOOT + IMU only.
 
-This scene is simulation-only and must not provide real reactive-metal experimental instructions. Its capacitive mappings must be reconciled against the accepted ES-003A slider/combo truth before implementation; the aspirational A/B wording above is not authorization to re-enable rejected bare-board zones.
+Independent A/B touch zones remain disabled because the tested bare board did not support reliable two-zone operation.
 
-## Scene 3 — Oil Fire
+**Must show / automated evidence:** finite reactant consumption, bounded local reactions/impulses, gas/fire products, fixed-seed replay and bounded work. The particle is not animated along a scripted “skitter” path: visible reaction motion comes from the shared transport/motion fields and common reaction impulse.
 
-**Visual identity:** dark/amber low-density oil floating above water or empty space; orange/yellow flame front; dim smoke/embers.
+This scene is simulation-only. It contains no real reactive-metal experimental instructions, quantities or handling guidance.
 
-**Autonomous loop:** oil pools and spreads; ignition consumes it; flames propagate where fuel/heat permit and eventually gutter out.
+## Scene 3 — Oil + Fire — ES-008 baseline
 
-**Inputs:**
-- cap A: add oil/fuel;
-- cap B: ignition/heat pulse;
-- combo: flash event constrained by available fuel;
-- tilt: redistributes liquid fuel;
-- shake: splashes/rearranges fuel and embers.
+**Visual identity:** dim amber/brown low-density oil layered above blue water, bright orange/yellow finite flame fronts and dim smoke after burn-out.
 
-**Must show:** fuel depletion, flame spread, visible extinction rather than permanent decorative fire.
+**Autonomous loop:** a deterministic water layer supports an oil pool with one seeded ignition. Oil uses the shared lower density and mobility metadata, so it behaves differently from water. The centralized oil + fire reaction converts adjacent fuel into finite fire; generic ES-006 fire lifetime then produces smoke. Each long autonomous cycle contains a quiet burn/extinction interval followed by sparse fuel refill and one re-ignition so the scene has visible depletion and recovery rather than permanent decorative fire.
 
-As with Scene 2, future implementation must translate the old A/B aspiration into the actually supported ES-003A slider/combo semantics rather than exposing nonexistent independent zones.
+**Implemented inputs:**
+
+- tilt redistributes oil through shared density/mobility transport;
+- shake/motion raise the ordinary bounded mobility term and rearrange fuel/fire/smoke without scene-local fluid rules;
+- the coarse slider adds one oil cell near the selected horizontal position at a capped cadence;
+- combo ignites one existing oil cell through a bounded event, after which propagation uses the common oil/fire reaction;
+- the scene remains fully usable with BOOT + IMU alone.
+
+Independent A/B touch zones remain disabled.
+
+**Must show / automated evidence:** oil begins above water, fuel is consumed only through stateful ignition/reaction, fire has finite lifetime, smoke remains after expiry, and a pre-refill interval reaches visible extinction. Fixed-seed and randomized duplicate-model traces lock determinism and bounded work.
+
+This is stylized simulation content only; it is not fuel or ignition guidance.
 
 ## Scene 4 — Moss Garden + Mites
 
@@ -69,7 +76,7 @@ As with Scene 2, future implementation must translate the old A/B aspiration int
 
 **Must show:** growth over time, at least one agent visibly moving independently, biomass loss caused by feeding, recovery when conditions permit.
 
-Future capacitive mappings remain subject to the accepted coarse slider/combo hardware truth.
+Future capacitive mappings remain subject to the accepted coarse slider/combo hardware truth; the old A/B wording above is aspirational scene intent, not authorization to expose unsupported bare-board zones.
 
 ## Scene 5 — Tracer / Dissolution Plume
 
@@ -100,9 +107,17 @@ Select at least one after hero-scene profiling:
 
 Selection criterion is **maximum new visible behaviour per implementation complexity**, not thematic completeness.
 
-## Scene order and persistence
+## Scene order and persistence — ES-008 baseline
 
-The firmware should expose a stable default scene order. ES-007 is the first product scene and therefore boots directly by default. Until ES-008 adds Scene 2, long BOOT wraps to the same scene with a deterministic seed increment; short BOOT restores the current seed exactly. Scene selection may optionally persist across reboot later, but no persistence mechanism should complicate early development.
+The stable product order is now:
+
+```text
+Lava + Water -> Sodium-like + Water -> Oil + Fire -> Lava + Water
+```
+
+Cold boot starts at Lava + Water. Short BOOT resets the current scene at exactly its current seed. Long BOOT advances one entry and increments the deterministic seed before initializing the next scene. This makes scene changes visibly meaningful now that three product scenes exist.
+
+Scene selection is not persisted across reboot in v0 yet; avoiding persistence complexity remains intentional.
 
 ## Content quality bar
 

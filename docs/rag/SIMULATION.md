@@ -30,11 +30,12 @@ Material IDs remain the stable ES-004 set: empty, wall, crust, water, oil, lava,
 
 `kMaterialDynamics` remains the single shared source of transport kind, stylized density rank, gravity/lateral mobility, thermal conductivity, ambient loss and blocking semantics. Scene code must not introduce a second density/viscosity table.
 
-The current important ordering/mobility choices remain:
+Important shared choices remain:
 
 - water: gravity material, density 120, high gravity/lateral mobility;
 - oil: gravity material, density 80, somewhat less mobile than water;
 - lava: gravity material, density 150, deliberately viscous/slow;
+- sodium-like: gravity-driven particle material, density 180;
 - steam/smoke/fire: low-density buoyant materials;
 - crust/wall: blocking static materials.
 
@@ -44,7 +45,7 @@ These are stylized tiny-grid parameters, not physical densities, viscosities or 
 
 `Model` owns explicit PCG32 state. No core material/scene rule may draw from hidden/global entropy, `rand()`, timestamps or hardware noise. The same seed, initial/reset state and normalized per-tick input sequence must produce the same state trace.
 
-ES-006 transport uses a deterministic tick/cell phase schedule rather than consuming PRNG draws for ordinary mobility. ES-007 does use the model-owned PCG32 for scene placement/injection/fracture selection; those draws are therefore part of explicit deterministic scene evolution.
+ES-006 transport uses a deterministic tick/cell phase schedule rather than consuming PRNG draws for ordinary mobility. Product scenes use the model-owned PCG32 only for explicit scene placement/injection/selection rules, so all stochastic-looking scene behavior remains replayable.
 
 ## Fixed-step model and lifecycle
 
@@ -56,9 +57,11 @@ Available model scenes are now:
 
 - `kDeterminismFixture` — original ES-004 PRNG/input/hash fixture;
 - `kDynamicsFixture` — ES-006 shared-mechanics substrate fixture;
-- `kLavaWater` — first product scene, added by ES-007.
+- `kLavaWater` — product scene 1, ES-007;
+- `kSodiumWater` — product scene 2, ES-008;
+- `kOilFire` — product scene 3, ES-008.
 
-The two fixtures remain non-product test substrates.
+The two fixtures remain non-product test substrates. The stable product order is encoded centrally as Lava + Water -> Sodium-like + Water -> Oil + Fire -> Lava + Water.
 
 ## Bounded per-tick work
 
@@ -66,7 +69,7 @@ The two fixtures remain non-product test substrates.
 
 ES-006 reaction candidates consume reaction budget before product commit and never recurse. Optional local reaction impulse consumes event budget. Transport/heat/lifecycle passes remain fixed scans of the 256-cell world.
 
-ES-007 scene-specific actions also use bounded work: slider injection and combo burst consume event budget, and a disturbance may attempt only a tiny fixed number of crust relocations. Autonomous periodic replenishment is one bounded injection attempt at its scheduled tick; it does not start a queue or backlog.
+Product-scene touch actions also consume event budget. Autonomous injections are single bounded attempts at their scheduled ticks and never create queues/backlogs. Shared reactions remain the only reaction executor.
 
 ## State hashing and schema boundaries
 
@@ -82,7 +85,7 @@ after tick 3 0xB411D621F3D3F1C6
 after tick 4 0x8F0F30D22E87FB14
 ```
 
-`kDynamicsFixture` adds `kDynamicsSchemaVersion` to its hash identity. `kLavaWater` includes both that dynamics schema and `kLavaWaterSceneSchemaVersion`, plus the scene's per-tick observable action stats. This isolates intentional later scene evolution from unrelated foundational fixtures.
+`kDynamicsFixture` adds `kDynamicsSchemaVersion`. Each product scene includes that shared dynamics discriminator plus its own scene schema version. ES-008 adds `kSodiumWaterSceneSchemaVersion` and `kOilFireSceneSchemaVersion` without renumbering earlier scene IDs. Per-tick scene action stats are included only for the active scene.
 
 ## Transport — ES-006 baseline
 
@@ -96,7 +99,7 @@ after tick 4 0x8F0F30D22E87FB14
 - shake/motion/tap/absolute spin provide bounded mobility disturbance but do not replace gravity;
 - each cell participates in at most one transport exchange in the pass.
 
-Whole-cell moves/swaps conserve tracked material mass exactly. Scene injection intentionally adds mass; reaction rules transform identity while preserving the two participating cell masses.
+Whole-cell moves/swaps conserve tracked material mass exactly. Scene injection intentionally adds mass; reaction rules transform identity while preserving participating cell masses.
 
 ## Heat — ES-006 baseline
 
@@ -104,7 +107,7 @@ Each horizontal/vertical pair is visited once, with bounded integer exchange pro
 
 Units are game/simulation units chosen for bounded convergence and useful visible gradients, not physical temperature calibration.
 
-## Reactions — ES-006 baseline
+## Reactions and finite fire — shared baseline
 
 The centralized shared reaction table remains:
 
@@ -116,53 +119,80 @@ The centralized shared reaction table remains:
 
 Each cell may participate in at most one adjacency reaction in a tick. Traversal is deterministic, every accepted candidate consumes reaction budget, and there is no recursive chain executor.
 
+Fire is a shared finite material state. `aux` carries remaining lifetime; expired fire becomes smoke at reduced temperature while preserving mass. ES-008 relies on this generic lifecycle rather than implementing scene-local flame timers.
+
 ## Lava + Water — ES-007 product scene
 
-`LavaWaterScene` is scene policy around the shared ES-006 engine, not a bespoke physics implementation.
+`LavaWaterScene` is scene policy around the shared ES-006 engine. It initializes a substantial water reservoir, hot lava body and seeded near-contact cell, then periodically attempts bounded lava/water replenishment. Strong disturbance may relocate only a tiny capped number of existing crust cells, preserving mass while reopening contact surfaces. Slider/combo provide optional bounded injection under the accepted touch truth.
+
+All flow, heat, gas and lava-water transformation still come from the shared dynamics engine.
+
+## Sodium-like + Water — ES-008 product scene
+
+`SodiumWaterScene` deliberately avoids scripted skitter/fizz animation.
+
+### Initial/autonomous state
+
+- border walls bound the world;
+- water fills the lower six interior rows;
+- a small finite set of sodium-like particles begins above/near the water, including one seeded near-contact placement;
+- one sodium-like top injection is attempted every 180 ticks;
+- one water refill attempt occurs every 300 ticks.
+
+### Reaction behavior
+
+When sodium-like contacts water, the centralized ES-006 rule produces finite fire plus steam. The ordinary reaction impulse writes bounded motion proxies to the product cells, so energetic local movement is a shared reaction consequence rather than arbitrary scene animation. Fire then expires through the generic fire-to-smoke lifecycle.
+
+### Optional touch
+
+- slider adds one sodium-like cell near the selected X, at the shared capped touch cadence;
+- combo inserts one adjacent sodium-like/water pair into available space;
+- both actions consume event budget;
+- independent A/B zones remain disabled.
+
+The scene remains complete through autonomous behavior + IMU alone.
+
+## Oil + Fire — ES-008 product scene
+
+`OilFireScene` proves finite fuel propagation/extinction using only shared material/reaction behavior.
 
 ### Initial state
 
-- border walls remain fixed;
-- a 12×5 interior water reservoir provides a strong blue/cyan body;
-- a 6×2 hot lava body begins above it;
-- one seeded lava cell is placed immediately above the reservoir to guarantee early contact/reaction without waiting for a lucky random arrangement.
+- a lower water layer provides a density reference;
+- an amber oil pool begins above it, using the shared oil density/mobility metadata;
+- one seeded fire cell starts inside the fuel.
 
-The starting layout consumes the model-owned seed only for that contact X position and therefore resets exactly for the same seed.
+### Autonomous burn cycle
 
-### Autonomous arc
+The first part of each 480-tick cycle intentionally contains no fuel injection, allowing fuel to be consumed and finite fire to gutter out. From phase 240 to before phase 300, sparse oil refill attempts occur every 12 ticks. At phase 300, one existing oil cell is re-ignited if available. The common oil/fire rule then handles subsequent propagation; generic fire lifetime handles extinction/smoke.
 
-- lava attempts one bounded top-interior injection every 48 model ticks;
-- water attempts one bounded top-interior replenishment every 120 ticks;
-- an injection only replaces empty/steam/smoke/fire space; it does not erase wall/crust/bulk liquid;
-- ordinary gravity, heat and the centralized lava-water rule then determine contact, crust accumulation and steam motion.
+This creates a stateful build/burn/extinguish/refill/reignite arc without a permanent decorative flame.
 
-This intentional replenishment means total world mass may rise at scheduled injections. Between external/autonomous injections, the shared transport/reaction behavior conserves tracked mass under its documented whole-cell rules.
+### Optional touch
 
-### Interaction
+- slider adds one oil cell near the selected X;
+- combo ignites one existing oil cell;
+- propagation after ignition still belongs to `DynamicsEngine`;
+- independent A/B zones remain disabled.
 
-- tilt affects the ordinary shared gravity vector;
-- strong motion can relocate only 2 or 3 existing crust cells per tick, subject to event budget, preserving those cell masses while reopening contact surfaces;
-- pinch slider can inject one lava cell near its horizontal position at most once per 12 ticks and only while active/strong enough;
-- combo can insert one adjacent lava/water pair into available interior space; conversion still occurs through `DynamicsEngine` and its reaction budget.
+## Deterministic scene evidence — ES-008
 
-Independent A/B touch zones are not part of this scene because physical ES-003A evidence rejected them.
+ES-008 tests require:
 
-### Deterministic scene evidence
+- stable three-scene catalogue order and names;
+- deterministic strong Sodium-like + Water initialization;
+- finite sodium consumption, shared reaction products and bounded reaction impulse;
+- bounded slider/combo actions;
+- deterministic Oil + Fire initialization with oil above water;
+- fuel consumption, finite fire expiry, smoke and a pre-refill extinction interval;
+- fixed-seed duplicate-model traces for both new scenes;
+- distinct initial renderer frames across all three product scenes;
+- 1,000 randomized duplicate-model ticks for each new scene with state-hash equality, valid materials and bounded work.
 
-ES-007 host tests require:
+## Safety semantics
 
-- deterministic initialization and exact same-seed reset;
-- persistent crust + steam from autonomous contact;
-- materially different geometry for different gravity directions;
-- bounded mass-preserving crust fracture;
-- bounded slider/combo input behavior using the shared reaction path;
-- a scripted 96-tick duplicate-model state-hash trace with gravity changes, shake, tap, combo and slider events;
-- a 1,200-tick randomized duplicate-model replay with valid materials and bounded work.
-
-## Sodium-like safety semantics
-
-The sodium-like material is visual/game physics only. Do not encode real-world reactive-metal experimental guidance.
+Sodium-like and Oil + Fire are stylized visual/game simulations only. Do not encode real reactive-metal, fuel, ignition, quantity or experimental handling guidance.
 
 ## Tracer and biology — later milestones
 
-Tracer remains static in ES-006 bulk transport until the tracer/plume milestone adds concentration behavior. Moss/plant and mite-like ecology remains later work and must remain bounded/deterministic.
+Tracer remains static in ES-006 bulk transport until the tracer/plume milestone adds concentration behavior. Moss/plant and mite-like ecology remains the next hero milestone and must remain bounded/deterministic.
