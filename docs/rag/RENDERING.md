@@ -2,135 +2,141 @@
 
 ## Goal
 
-Make 64 LEDs imply a world richer and more causally legible than 64 independent pixels while every physical frame remains inside one centralized output budget.
+Make 64 LEDs imply a richer, causally legible world while using the panel's strongest perceived dynamic range efficiently and keeping every physical frame behind one centralized load limiter.
 
 ## Internal-to-display mapping
 
-The 16x16 simulation maps to 8x8 by deterministic 2x2 logical aggregation. `WorldRenderer` combines mass-weighted material colour, high-importance minority preservation, bounded thermal emission and material-specific compact state.
+The deterministic 16x16 simulation maps to the physical 8x8 display through 2x2 logical aggregation.
 
-Product scenes do not reserve a logical wall ring, so all **28 physical perimeter LEDs** may display ordinary content.
+Beauty rendering combines:
 
-### Coverage-aware beauty projection — readability correction #35
+- mass-weighted material colour;
+- explicit 1/4..4/4 logical coverage scaling;
+- important-minority preservation;
+- bounded temperature/energy contribution;
+- deterministic world-locked structural contrast from boundaries, motion and stable coordinates.
 
-Physical review after ES-009 exposed a projection problem: the beauty renderer normalized a 2x2 block by only the occupied mass. A block containing one logical material sample could therefore look almost as full/bright as a block containing all four samples. Thin streams, shorelines and isolated particles visually inflated into large square LEDs.
+The coverage correction is important: one occupied logical subcell no longer projects nearly as strongly as four occupied subcells. Thin streams, particles, shorelines and sparse pockets therefore remain visibly thinner than fully occupied material.
 
-Beauty rendering now preserves sub-pixel logical coverage after mass-weighted colour calculation:
+Rendering remains a pure projection. It does not advance the model or consume model PRNG state.
+
+## Ordinary luminance domain — 0..127
+
+Physical-board feedback shows that this LED chain has substantially more useful perceived differentiation at low code values than in the upper portion of 8-bit output.
+
+Beauty mode therefore defines a perceptual ordinary domain:
 
 ```text
-occupied logical samples in 2x2: 0    1    2    3    4
-coverage scale (Q8):             0  136  176  216  256
+ordinary centre ~= 63 / 255
+ordinary maximum = 127 / 255
 ```
 
-This is deliberately not a linear 25/50/75/100% scale: single-cell features remain visible on the physical panel, but they no longer masquerade as completely filled physical pixels. Material-ID, temperature and mass diagnostic modes retain their own explicit semantics.
+After the existing logical HDR/tone-map, coverage and structural shading, non-energetic Beauty channels are compressed approximately in half and clamped to 127. This means an old midrange value around 126 maps close to 63, while an old full-scale ordinary value maps to 127.
 
-High-importance minority accents are blended **after** coverage/structural scaling. Small fire, steam and reaction features can therefore remain readable without making every partial liquid block look fully occupied.
+The values 63 and 127 are **artistic/display code landmarks**, not measured luminance, electrical current or thermal limits.
 
-## Deterministic structural contrast — readability correction #35
+Ordinary examples include settled water, oil, moss, crust, smoke and other non-hot material state.
 
-Even a physically correct liquid eventually settles into contiguous regions. On 8x8, a perfectly flat colour field is difficult to parse, so Beauty mode applies a mild deterministic structural scale to water, oil, lava and moss.
+## Pseudo-HDR domain — 128..255
 
-The scale derives only from:
+Beauty values above 127 are reserved for sparse causal state that benefits from conspicuous contrast. Current eligibility is deliberately narrow:
 
-- a fixed four-phase `(output x, output y, material ID)` spatial pattern;
-- whether adjacent physical blocks have the same dominant material;
-- actual logical `motion_x` / `motion_y` proxies in the block.
+- fire;
+- sufficiently hot lava;
+- sufficiently hot steam;
+- reaction highlights applied by runtime;
+- high-contrast mite overlays.
 
-It does **not** use PRNG draws, timestamps or hidden animation noise. A fixed world always renders identically. Boundaries and moving regions receive slightly more local contrast; stable interiors retain low-amplitude spatial grain rather than collapsing into one exact RGB value.
+The base renderer tracks how many physical pixels enter this pseudo-HDR domain through `RenderStats::pseudo_hdr_pixels`.
 
-This treatment occurs before minority accents and before runtime temporal persistence. It is presentation only and cannot affect simulation state or replay hashes.
+The upper half is called **pseudo-HDR** because it is only a perceptual/artistic allocation inside an 8-bit LED code range. It is not HDR in a calibrated photometric sense.
 
-## Centralized material shading
+## Structural contrast without decorative noise
 
-One shared style table remains authoritative. Important identities include blue/cyan water, orange/red hot lava, dark crust, pale steam, pale/warm sodium-like material, amber oil, bright finite fire, dim smoke and green moss.
+Water, oil, lava and moss receive low-amplitude deterministic variation based on:
 
-Moss uses existing aux modulation for biological variation. Exact RGB values are artistic model parameters, not physical spectra. Invalid material IDs still use deterministic fallback/counting.
+- stable matrix position/material identity;
+- same-material neighboring blocks;
+- actual logical motion proxies.
 
-## Scene composition for information density
+No random twinkle, timestamp noise or PRNG draw is added by rendering. A fixed world always produces the same Beauty frame.
 
-The first ES-009 readability pass made scene shapes larger but physical feedback showed that some of those shapes became excessively homogeneous. Issue #35 replaces broad slabs with coherent but broken-up geometry:
+The intended balance is coherent material with visible internal structure—not monolithic colour slabs and not random confetti.
 
-- **Lava + Water:** irregular water shoreline/depth plus a thin meandering lava stream; autonomous water arrives as falling edge rivulets rather than directly extending a basin slab.
-- **Sodium-like + Water:** uneven pool with sparse single reactant drops and falling water rivulets rather than paired/broad blocks.
-- **Oil + Fire:** broken oil ribbons and pockets floating above an uneven water surface, with a sparse left-originating ignition front rather than several solid rows.
-- **Moss Garden:** model layout remains unchanged in this pass; coverage-aware projection and deterministic structural shading break up its large wet/green areas without changing ecology state or hashes.
+## Temporal persistence
 
-The intent is **structured diversity**, not confetti: large-scale scene meaning should survive while exact same-colour rectangles become uncommon.
+`scene_effects::blend_with_previous` still blends each current base frame with the previous base frame using scene-specific fixed integer weights. This reduces 60 Hz cell-churn and makes motion easier to follow.
 
-## Temporal presentation persistence — ES-009
-
-`scene_effects::blend_with_previous` blends each base rendered pixel with the previous base frame using fixed integer scene-specific weights. It reduces 60 Hz cell-churn/flicker and helps motion read as continuity.
-
-Current previous-frame weights are:
+Current previous-frame weights remain approximately:
 
 - Lava + Water: 56;
 - Sodium-like + Water: 48;
 - Oil + Fire: 64;
 - Moss Garden: 96.
 
-History is runtime presentation state only. It resets on scene reset/change and never feeds back into `Model`, PRNG, transport, reactions, agents or state hashes.
+History is runtime presentation state only. It resets on scene reset/change and never feeds into `Model`, PRNG, dynamics or hashes.
 
-The smoothed base frame is saved before transient overlays, so reaction highlights and mites do not leave artificial trails.
+Reaction highlights and mite overlays are applied after persistence, so they remain crisp and do not leave artificial trails.
 
-## Sparse reaction highlight and mite overlay
+## Product output scalar and centralized physical limiter
 
-On a tick with an applied shared reaction, runtime may brighten one hottest actual steam/fire output position. Moss Garden projects active mite coordinates to `(x/2,y/2)` and raises that output pixel to a bounded high-contrast marker.
+The old global product scalar request of roughly 26–28/255 and provisional 32/255 scalar ceiling would collapse the new 0..255 Beauty-domain distinction before it reached the LEDs. Product runtime therefore now requests the full scalar value **255**, and the default scalar ceiling permits 255.
 
-Both effects are applied after base persistence and before physical output limiting, so they stay crisp but cannot bypass the common power envelope.
+This does **not** mean a dense 255 frame is considered safe.
 
-## Logical HDR and scene requests
-
-The ES-005 rational tone-map remains:
+Every frame still passes through:
 
 ```text
-mapped = exposed * 255 / (exposed + 1024)
+WorldRenderer / overlays
+ -> MatrixOutput
+ -> OutputLimiter
+ -> LEDs
 ```
 
-Current requested settings remain:
+The mandatory aggregate frame-load envelope remains:
 
-- Lava + Water: exposure 320, brightness 28/255;
-- Sodium-like + Water: exposure 340, brightness 26/255;
-- Oil + Fire: exposure 300, brightness 28/255;
-- Moss Garden: exposure 300, brightness 26/255.
+```text
+4096 dimensionless post-brightness load units
+```
 
-## Centralized physical output budget
+Dense/high-energy frames automatically receive a lower applied scalar when necessary. Sparse pseudo-HDR pixels may reach the full code range when the aggregate frame remains inside that envelope.
 
-`MatrixOutput` remains the only physical NeoPixel gateway. Every frame passes through `OutputLimiter` after renderer, persistence and overlays.
+The 4096-unit policy is still a conservative software development envelope, not a measured current or temperature rating.
 
-Provisional board policy remains:
+## Sparse population complements pseudo-HDR
 
-- hard brightness ceiling: 32/255;
-- aggregate frame-load limit: 4096 dimensionless software load units.
+The shared product-scene material limit is 15 logical cells per material. This reduces large resting blocks and also makes the upper pseudo-HDR range naturally sparse: hot/reactive state is local rather than a panel-wide brightness field.
 
-These are conservative development settings, not certified current/temperature limits.
+CI checks the material population rule over a 720-tick resting run for every product scene.
 
-## Diagnostic render modes
+## Diagnostic modes
 
-`WorldRenderer` retains deterministic Beauty, Material ID, Temperature and Mass projections. The separate bring-up target remains available for raw hardware diagnostics.
+Material ID, Temperature and Mass diagnostic projections remain deterministic and are not constrained to the ordinary Beauty-domain 0..127 convention. They are tooling views, not normal product presentation.
 
-## Automated readability evidence
+## Physical validation required
 
-`test_readability` specifically locks properties that can be established without pretending CI can judge aesthetics:
+Automated tests prove code-domain rules and limiter arithmetic. They do not prove subjective brightness quality or electrical/thermal safety.
 
-1. a one-of-four occupied logical block must project dimmer than a four-of-four block;
-2. a completely uniform 16x16 water world still renders deterministically with at least four non-black physical RGB values and no identical horizontal/vertical run longer than four LEDs;
-3. all four product initial frames contain at least six non-black RGB values and no identical non-black run longer than four LEDs;
-4. after 180 downward-gravity ticks, all product frames retain at least four non-black RGB values and no identical run longer than five LEDs.
+After flashing this tuning pass, check specifically:
 
-These guards prevent a return to obvious large featureless blocks. They do not prove the result is attractive or immediately understandable.
+- ordinary water/oil/moss/crust occupy a comfortable low-luminance range with useful gradation around the first ~80 code steps;
+- 127 feels like a sensible maximum for non-energetic material;
+- fire/hot lava/reaction flashes are clearly brighter without dominating the whole matrix;
+- pseudo-HDR remains spatially sparse;
+- the aggregate limiter still reports requested/applied/load state and intervenes on dense frames;
+- no reset, USB instability, colour shift or undesirable heating appears in a sustained multi-scene soak.
 
-## Physical validation after readability correction #35
+Do not turn the new 255 scalar allowance into an electrical safety claim. Measured current/temperature evidence is still required before certifying or relaxing the aggregate-load policy.
 
-After flashing the corrected `main`, assess specifically:
+## Automated evidence
 
-- thin streams/shorelines now look thinner than fully filled regions;
-- settled water/oil/moss bodies have enough internal structure to show shape without looking noisy;
-- Lava reads as a narrow hot stream meeting an irregular water body;
-- Sodium drops remain individually trackable before reaction;
-- Oil reads as broken fuel ribbons/pockets and a spreading/depleting fire front;
-- Moss remains coherent while large green/blue regions are less monolithic;
-- structural grain does not resemble arbitrary twinkling because it is world-locked;
-- temporal persistence still helps continuity without excessive smear;
-- reaction flashes and mites remain crisp;
-- all effects continue through limiter telemetry.
+Host coverage now requires:
 
-Subjective readability remains a physical-board judgement. Do not infer electrical/thermal safety from visual comfort; retain the existing multi-scene soak before changing brightness policy.
+- ordinary Beauty channels stay at or below 127;
+- representative ordinary water/oil remain visible in the low range;
+- hot fire/lava may exceed 127;
+- pseudo-HDR pixel counting is deterministic;
+- a sparse one-pixel full-code frame can retain scalar 255 under the default limiter;
+- an explicitly dense white frame is load-limited;
+- zero load budget still fails dark;
+- all existing renderer determinism/palette/coverage tests remain green.
