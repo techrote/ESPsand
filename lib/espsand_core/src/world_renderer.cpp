@@ -96,15 +96,13 @@ std::uint8_t accent_weight(std::uint8_t importance) noexcept {
   return 0U;
 }
 
-std::uint32_t lerp_channel(std::uint32_t base, std::uint32_t accent,
-                           std::uint8_t weight) noexcept {
+std::uint32_t lerp_channel(std::uint32_t base, std::uint32_t accent, std::uint8_t weight) noexcept {
   const std::uint32_t inverse = 255U - weight;
   return (base * inverse + accent * weight + 127U) / 255U;
 }
 
 std::uint8_t tone_map(std::uint32_t linear, std::uint16_t exposure_q8) noexcept {
-  const std::uint64_t scaled =
-      (static_cast<std::uint64_t>(linear) * exposure_q8 + 128U) / 256U;
+  const std::uint64_t scaled = (static_cast<std::uint64_t>(linear) * exposure_q8 + 128U) / 256U;
   if (scaled == 0U) {
     return 0;
   }
@@ -127,7 +125,8 @@ LinearRgb temperature_color(std::int16_t temperature) noexcept {
     return {};
   }
   if (temperature < 0) {
-    const std::uint32_t magnitude = std::min<std::uint32_t>(temperature_magnitude(temperature), 2048U);
+    const std::uint32_t magnitude =
+        std::min<std::uint32_t>(temperature_magnitude(temperature), 2048U);
     return {0, magnitude / 3U, magnitude + 400U};
   }
   const std::uint32_t heat = std::min<std::uint32_t>(temperature, 2048U);
@@ -136,7 +135,8 @@ LinearRgb temperature_color(std::int16_t temperature) noexcept {
 
 } // namespace
 
-RenderResult WorldRenderer::render(const sim::World& world, const RenderConfig& config) const noexcept {
+RenderResult WorldRenderer::render(const sim::World& world,
+                                   const RenderConfig& config) const noexcept {
   RenderResult result{};
 
   for (std::size_t out_y = 0; out_y < io::kMatrixHeight; ++out_y) {
