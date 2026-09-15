@@ -20,92 +20,59 @@ uint8      aux         // material-specific compact state
 uint8      flags
 ```
 
-ES-006 activates the motion and temperature fields without changing the cell layout. A successful transport move records a bounded signed motion vector which decays toward zero on later ticks. It is deliberately a cheap recent-motion proxy rather than a continuous velocity field or CFD state. Temperature participates in local pairwise exchange and ambient loss. `aux` remains bounded material-specific state; ES-006 uses it for finite fire lifetime while preserving its future use for concentration, fuel, biomass or age.
+ES-006 activates motion/temperature without changing the layout. Successful transport records bounded signed recent motion that decays toward zero. Temperature participates in pairwise exchange and ambient loss. `aux` remains compact material-specific state; ES-006 uses it for finite fire lifetime.
 
 World access is bounds-checked through `try_cell` / `set_cell`; iteration and hashing use deterministic row-major order. Material accounting reports cell counts, per-material mass, occupied cells, total mass and invalid-state diagnostics.
 
-## Material registry
+## Material registry and shared dynamics metadata
 
-Material IDs remain the stable ES-004 identity set:
+Material IDs remain the stable ES-004 set: empty, wall, crust, water, oil, lava, steam, smoke, fire, sodium-like, tracer and moss.
 
-| ID | Name | Category |
-| ---: | --- | --- |
-| 0 | empty | empty |
-| 1 | wall | solid |
-| 2 | crust | solid |
-| 3 | water | liquid |
-| 4 | oil | liquid |
-| 5 | lava | liquid |
-| 6 | steam | gas |
-| 7 | smoke | gas |
-| 8 | fire | energy |
-| 9 | sodium_like | particle |
-| 10 | tracer | scalar |
-| 11 | moss | biomass |
+`kMaterialDynamics` remains the single shared source of transport kind, stylized density rank, gravity/lateral mobility, thermal conductivity, ambient loss and blocking semantics. Scene code must not introduce a second density/viscosity table.
 
-Material names are expressive game/simulation names, not claims of chemical fidelity. Mite-like mobile agents remain a likely separate bounded structure rather than a dense material ID.
+The current important ordering/mobility choices remain:
 
-### ES-006 dynamics metadata
+- water: gravity material, density 120, high gravity/lateral mobility;
+- oil: gravity material, density 80, somewhat less mobile than water;
+- lava: gravity material, density 150, deliberately viscous/slow;
+- steam/smoke/fire: low-density buoyant materials;
+- crust/wall: blocking static materials.
 
-`kMaterialDynamics` is the centralized dynamics table. Scene code must not grow its own density, viscosity or gas-ordering conditionals.
-
-| Material | Transport | Density rank | Gravity mobility | Lateral mobility |
-| --- | --- | ---: | ---: | ---: |
-| empty | static/displaceable | 0 | 0 | 0 |
-| wall | blocking static | 255 | 0 | 0 |
-| crust | blocking static | 240 | 0 | 0 |
-| water | gravity | 120 | 255 | 224 |
-| oil | gravity | 80 | 208 | 176 |
-| lava | gravity | 150 | 112 | 72 |
-| steam | buoyant | 12 | 255 | 224 |
-| smoke | buoyant | 8 | 224 | 208 |
-| fire | buoyant | 4 | 248 | 224 |
-| sodium_like | gravity | 180 | 224 | 104 |
-| tracer | static in ES-006 | 96 | 0 | 0 |
-| moss | blocking static in ES-006 | 160 | 0 | 0 |
-
-These ranks and mobility values are stylized tiny-grid parameters, not physical densities or viscosities. Water is deliberately more mobile than oil, and lava is deliberately much more viscous. Thermal conductivity and ambient-loss coefficients are also centralized per material.
+These are stylized tiny-grid parameters, not physical densities, viscosities or temperatures.
 
 ## PRNG and deterministic state
 
-`Model` owns an explicit PCG32 generator. The default stream selector is 54 (stored internally as odd increment 109); seeding follows the standard two-step PCG initialization. PRNG state and increment are exposed for deterministic inspection and included in state hashing.
+`Model` owns explicit PCG32 state. No core material/scene rule may draw from hidden/global entropy, `rand()`, timestamps or hardware noise. The same seed, initial/reset state and normalized per-tick input sequence must produce the same state trace.
 
-No core material/scene rule may draw from hidden/global entropy, `rand()`, timestamps or hardware noise. The same seed, initial/reset state and normalized per-tick input sequence must produce the same state trace.
-
-ES-006 transport itself uses a deterministic tick/cell phase schedule for mobility rather than consuming random draws merely to decide whether a cell moves. This keeps transport replay independent of unrelated future PRNG consumers. A later rule may use the model-owned PRNG where actual stochastic behaviour materially improves the scene, but the draw must be explicit and fixture-tested.
+ES-006 transport uses a deterministic tick/cell phase schedule rather than consuming PRNG draws for ordinary mobility. ES-007 does use the model-owned PCG32 for scene placement/injection/fracture selection; those draws are therefore part of explicit deterministic scene evolution.
 
 ## Fixed-step model and lifecycle
 
-`ModelConfig` contains the explicit seed, scene ID and per-tick event/reaction budget limits. `Model` provides:
+`ModelConfig` contains seed, scene ID and per-tick event/reaction budget limits. `Model` provides `init`, `reset`, `reseed`, `step`, state inspection, invariant checks and `state_hash`.
 
-- `init(config)` — install configuration and initialize deterministic state;
-- `reset()` — restore tick zero and the configured seed/initial scene state;
-- `reseed(seed)` — replace the configured seed and reset deterministically;
-- `step(InputFrame)` — execute exactly one logical simulation tick;
-- state inspection, invariant checks and a deterministic state hash.
+Hardware/runtime code schedules ticks and constructs normalized `InputFrame` values before crossing the pure-model boundary. Sensor polling cadence and wall-clock jitter are not simulation semantics.
 
-Hardware/runtime code is responsible for scheduling a fixed number of logical ticks and constructing normalized `InputFrame` values before crossing the pure-model boundary. Sensor polling cadence and wall-clock jitter are not simulation semantics.
+Available model scenes are now:
 
-Two non-product fixture scenes now exist:
+- `kDeterminismFixture` — original ES-004 PRNG/input/hash fixture;
+- `kDynamicsFixture` — ES-006 shared-mechanics substrate fixture;
+- `kLavaWater` — first product scene, added by ES-007.
 
-- `kDeterminismFixture` is the original ES-004 marker/input/PRNG fixture and retains its locked golden trace unchanged;
-- `kDynamicsFixture` is an ES-006 substrate fixture containing representative water/oil, gas/liquid and energetic/reactive contacts so deterministic motion-input traces exercise the shared engine without pretending to be a polished hero scene.
+The two fixtures remain non-product test substrates.
 
 ## Bounded per-tick work
 
-`WorkBudget` supplies fixed-width event/reaction counters with atomic all-or-nothing consumption. The model resets them each tick.
+`WorkBudget` supplies fixed-width event/reaction counters with atomic all-or-nothing consumption and saturating dropped-work counters. The model resets both every tick.
 
-ES-006 reaction candidates consume one reaction-budget unit before any products are committed. Exhausted candidates are skipped and counted as dropped work; there is no recursive reaction execution. Each applied reaction may also consume one event-budget unit for a bounded local motion impulse. Product transformation is not rolled back merely because the optional impulse budget is exhausted.
+ES-006 reaction candidates consume reaction budget before product commit and never recurse. Optional local reaction impulse consumes event budget. Transport/heat/lifecycle passes remain fixed scans of the 256-cell world.
 
-Transport, heat and lifecycle passes are fixed scans over the 256-cell world. No hot-path container grows with simulation activity.
+ES-007 scene-specific actions also use bounded work: slider injection and combo burst consume event budget, and a disturbance may attempt only a tiny fixed number of crust relocations. Autonomous periodic replenishment is one bounded injection attempt at its scheduled tick; it does not start a queue or backlog.
 
-## State hashing and trace fixtures
+## State hashing and schema boundaries
 
-State hashing uses versioned FNV-1a 64 over explicitly serialized little-endian fields rather than object memory. It covers seed/configuration, tick, PRNG state, fixture state, work counters and every cell.
+State hashing uses versioned FNV-1a 64 over canonical explicit little-endian fields, not raw object memory. It is a replay/regression identity, not cryptographic integrity.
 
-It is a **regression/replay identity**, not a cryptographic integrity guarantee. The hash schema is versioned. The ES-006 dynamics fixture additionally includes `kDynamicsSchemaVersion` in its hash identity because its future evolution depends on the shared dynamics rule set. The original ES-004 fixture omits that new field and therefore retains its existing locked hashes.
-
-The locked ES-004 trace remains:
+The original ES-004 exact golden trace remains unchanged:
 
 ```text
 initial      0x4943A6C732CA020D
@@ -115,75 +82,87 @@ after tick 3 0xB411D621F3D3F1C6
 after tick 4 0x8F0F30D22E87FB14
 ```
 
-ES-006 adds repeated duplicate-model motion traces rather than replacing the foundational fixture. Intentional changes to shared dynamics semantics must update the corresponding dynamics tests/schema deliberately.
+`kDynamicsFixture` adds `kDynamicsSchemaVersion` to its hash identity. `kLavaWater` includes both that dynamics schema and `kLavaWaterSceneSchemaVersion`, plus the scene's per-tick observable action stats. This isolates intentional later scene evolution from unrelated foundational fixtures.
 
 ## Transport — ES-006 baseline
 
 `DynamicsEngine` performs one deterministic bounded transport pass per model tick.
 
-- normalized gravity selects one cardinal movement axis each tick; diagonal gravity is represented over time by deterministic X/Y duty weighting rather than floating-point position integration;
-- gravity-driven materials move with gravity; steam, smoke and fire move opposite gravity;
-- a dynamic cell can move into empty space or swap with a non-blocking material when density ordering permits it;
-- water/oil/lava/sodium-like movement rates are controlled by centralized mobility values;
-- liquids and gases may try one perpendicular relaxation/dispersion move when their primary direction is blocked;
-- signed normalized `spin_rate` biases which perpendicular side is tried first;
-- `shake_energy`, `motion_energy`, `tap_impulse` and absolute spin contribute only to a bounded disturbance/mobility boost. They do **not** replace or rotate the low-frequency gravity direction;
-- successful moves record a compact motion proxy and no cell may participate in more than one transport exchange in the same pass.
+- normalized gravity selects a deterministic cardinal movement axis; diagonal input becomes a deterministic X/Y duty sequence;
+- gravity materials move with gravity; steam/smoke/fire move opposite gravity;
+- dynamic cells move into empty space or density-swap with non-blocking materials when ordering permits;
+- liquids/gases may attempt perpendicular relaxation when primary movement is blocked;
+- signed spin biases lateral side choice;
+- shake/motion/tap/absolute spin provide bounded mobility disturbance but do not replace gravity;
+- each cell participates in at most one transport exchange in the pass.
 
-Whole-cell moves/swaps make tracked material mass conservation exact for the ES-006 transport kernel. This is intentionally simpler than a partial-fill fluid solver. Later vertical slices may justify bounded same-material fill relaxation, but they should not replace the shared deterministic transport contract merely for visual convenience.
+Whole-cell moves/swaps conserve tracked material mass exactly. Scene injection intentionally adds mass; reaction rules transform identity while preserving the two participating cell masses.
 
 ## Heat — ES-006 baseline
 
-Heat uses a fixed local integer scheme:
+Each horizontal/vertical pair is visited once, with bounded integer exchange proportional to the lower material conductivity. Equal/opposite deltas accumulate in a fixed 256-element array before application; then material-specific ambient loss moves temperatures toward zero. Final values clamp to `int16_t`.
 
-- each horizontal/vertical neighbour pair is visited once;
-- pairwise exchange is proportional to the smaller material conductivity and is capped per pair;
-- equal and opposite pair deltas are accumulated in a fixed 256-element array, so exchange itself is order-independent and energy-balanced before ambient loss;
-- each material then moves its temperature toward zero by its centralized ambient-loss amount;
-- intermediate arithmetic uses wider integers and final values clamp to `int16_t`.
-
-Units are intentionally game/simulation units. The goals are boundedness, predictable convergence and useful visible thermal gradients, not physical temperature calibration.
+Units are game/simulation units chosen for bounded convergence and useful visible gradients, not physical temperature calibration.
 
 ## Reactions — ES-006 baseline
 
-Reaction identity is centralized in `kReactionRules`. ES-006 intentionally establishes only the shared primitives required by later hero work:
+The centralized shared reaction table remains:
 
 | Contact | Products | Baseline effect |
 | --- | --- | --- |
-| lava + water | crust + steam | both products heated |
-| sodium_like + water | fire + steam | finite hot fire state + hot gas |
+| lava + water | crust + steam | heated persistent solid + hot buoyant gas |
+| sodium_like + water | fire + steam | finite hot fire + hot gas |
 | oil + fire | fire + fire | fuel cell becomes finite hot fire |
 
-Each cell may participate in at most one adjacency reaction during a tick, candidate traversal is deterministic row-major/right/down order, and every applied contact consumes the shared reaction budget. The table is stylized simulation content only.
+Each cell may participate in at most one adjacency reaction in a tick. Traversal is deterministic, every accepted candidate consumes reaction budget, and there is no recursive chain executor.
 
-Fire has a generic finite lifecycle in ES-006: `aux` is a bounded remaining-life counter; when it reaches zero the cell becomes smoke at reduced temperature with mass preserved. This gives later oil/fire and sodium-like scenes a reusable finite energy primitive instead of decorative immortal fire.
+## Lava + Water — ES-007 product scene
 
-## Sodium scene safety semantics
+`LavaWaterScene` is scene policy around the shared ES-006 engine, not a bespoke physics implementation.
 
-The sodium-like material exists only to generate a recognizable energetic simulation. Do not encode procedures, quantities or experimental guidance for handling real sodium or reactive metals. Implementation is purely visual/game physics.
+### Initial state
 
-## Tracer scalar — subsequent milestone
+- border walls remain fixed;
+- a 12×5 interior water reservoir provides a strong blue/cyan body;
+- a 6×2 hot lava body begins above it;
+- one seeded lava cell is placed immediately above the reservoir to guarantee early contact/reaction without waiting for a lucky random arrangement.
 
-Tracer remains static in ES-006 bulk transport. Tracer/plume work may later model concentration separately or encode concentration in `Cell::aux`; desired future behaviour includes localized injection, advection, diffusion/mixing and concentration-dependent palette mapping.
+The starting layout consumes the model-owned seed only for that contact X position and therefore resets exactly for the same seed.
 
-## Biology — subsequent milestone
+### Autonomous arc
 
-Moss/plant and mite-like behavior is not implemented by ES-006. Future biology must remain small, bounded and deterministic and must share the model-owned PRNG.
+- lava attempts one bounded top-interior injection every 48 model ticks;
+- water attempts one bounded top-interior replenishment every 120 ticks;
+- an injection only replaces empty/steam/smoke/fire space; it does not erase wall/crust/bulk liquid;
+- ordinary gravity, heat and the centralized lava-water rule then determine contact, crust accumulation and steam motion.
 
-## Deterministic verification
+This intentional replenishment means total world mass may rise at scheduled injections. Between external/autonomous injections, the shared transport/reaction behavior conserves tracked mass under its documented whole-cell rules.
 
-The ES-004 foundational suite remains unchanged, including its PRNG fixture and exact golden trace. ES-006 adds host-native checks for:
+### Interaction
 
-- material-mass conservation under transport and under the current reaction primitives;
-- gravity movement along both matrix axes;
-- water/oil density ordering and steam rise through liquid;
-- distinct centralized liquid mobility/viscosity values;
-- bounded pairwise heat exchange and ambient convergence;
-- reaction product identity and hard reaction-budget saturation;
-- sodium-like/water and oil/fire shared primitives plus finite fire-to-smoke lifecycle;
-- separation of disturbance magnitude from gravity direction;
-- duplicate `kDynamicsFixture` models producing identical state hashes for the same normalized motion-input sequence;
-- reset restoring the initial dynamics state;
-- 2,000 randomized dynamics ticks preserving valid bounds, exact tracked mass and budget invariants.
+- tilt affects the ordinary shared gravity vector;
+- strong motion can relocate only 2 or 3 existing crust cells per tick, subject to event budget, preserving those cell masses while reopening contact surfaces;
+- pinch slider can inject one lava cell near its horizontal position at most once per 12 ticks and only while active/strong enough;
+- combo can insert one adjacent lava/water pair into available interior space; conversion still occurs through `DynamicsEngine` and its reaction budget.
 
-Later hero scenes must add scene-specific fixed-seed traces without weakening these shared mechanics tests.
+Independent A/B touch zones are not part of this scene because physical ES-003A evidence rejected them.
+
+### Deterministic scene evidence
+
+ES-007 host tests require:
+
+- deterministic initialization and exact same-seed reset;
+- persistent crust + steam from autonomous contact;
+- materially different geometry for different gravity directions;
+- bounded mass-preserving crust fracture;
+- bounded slider/combo input behavior using the shared reaction path;
+- a scripted 96-tick duplicate-model state-hash trace with gravity changes, shake, tap, combo and slider events;
+- a 1,200-tick randomized duplicate-model replay with valid materials and bounded work.
+
+## Sodium-like safety semantics
+
+The sodium-like material is visual/game physics only. Do not encode real-world reactive-metal experimental guidance.
+
+## Tracer and biology — later milestones
+
+Tracer remains static in ES-006 bulk transport until the tracer/plume milestone adds concentration behavior. Moss/plant and mite-like ecology remains later work and must remain bounded/deterministic.
