@@ -10,7 +10,6 @@ namespace espsand::render {
 void blend_with_previous(io::Frame8x8& frame, const io::Frame8x8& previous,
                          std::uint8_t previous_weight_q8) noexcept;
 
-void apply_mite_overlay(io::Frame8x8& frame,
-                        const sim::MossGardenStateSnapshot& state) noexcept;
+void apply_mite_overlay(io::Frame8x8& frame, const sim::MossGardenStateSnapshot& state) noexcept;
 
 } // namespace espsand::render
