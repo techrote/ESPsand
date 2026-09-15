@@ -34,8 +34,7 @@ public:
   void set_policy(OutputPolicy policy) noexcept;
   const OutputPolicy& policy() const noexcept;
 
-  OutputDecision limit(const io::Frame8x8& frame,
-                       std::uint8_t requested_brightness) const noexcept;
+  OutputDecision limit(const io::Frame8x8& frame, std::uint8_t requested_brightness) const noexcept;
 
 private:
   OutputPolicy policy_{};
