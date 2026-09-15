@@ -7,6 +7,7 @@
 #include <espsand/sim/energetic_scenes.hpp>
 #include <espsand/sim/input_frame.hpp>
 #include <espsand/sim/lava_water_scene.hpp>
+#include <espsand/sim/moss_garden_scene.hpp>
 #include <espsand/sim/prng.hpp>
 #include <espsand/sim/work_budget.hpp>
 #include <espsand/sim/world.hpp>
@@ -21,17 +22,19 @@ enum class SceneId : std::uint8_t {
   kLavaWater = 2,
   kSodiumWater = 3,
   kOilFire = 4,
+  kMossGarden = 5,
 };
 
-inline constexpr std::array<SceneId, 3> kProductSceneOrder{{
+inline constexpr std::array<SceneId, 4> kProductSceneOrder{{
     SceneId::kLavaWater,
     SceneId::kSodiumWater,
     SceneId::kOilFire,
+    SceneId::kMossGarden,
 }};
 
 constexpr bool is_product_scene(SceneId scene) noexcept {
   return scene == SceneId::kLavaWater || scene == SceneId::kSodiumWater ||
-         scene == SceneId::kOilFire;
+         scene == SceneId::kOilFire || scene == SceneId::kMossGarden;
 }
 
 constexpr bool uses_shared_dynamics(SceneId scene) noexcept {
@@ -50,6 +53,8 @@ constexpr const char* scene_name(SceneId scene) noexcept {
     return "sodium_water";
   case SceneId::kOilFire:
     return "oil_fire";
+  case SceneId::kMossGarden:
+    return "moss_garden";
   }
   return "invalid";
 }
@@ -61,6 +66,8 @@ constexpr SceneId next_product_scene(SceneId scene) noexcept {
   case SceneId::kSodiumWater:
     return SceneId::kOilFire;
   case SceneId::kOilFire:
+    return SceneId::kMossGarden;
+  case SceneId::kMossGarden:
   case SceneId::kDeterminismFixture:
   case SceneId::kDynamicsFixture:
     return SceneId::kLavaWater;
@@ -125,6 +132,8 @@ public:
   LavaWaterSceneStats lava_water_stats() const noexcept;
   SodiumWaterSceneStats sodium_water_stats() const noexcept;
   OilFireSceneStats oil_fire_stats() const noexcept;
+  MossGardenSceneStats moss_garden_stats() const noexcept;
+  MossGardenStateSnapshot moss_garden_state() const noexcept;
 
   bool invariants_hold() const noexcept;
   std::uint64_t state_hash() const noexcept;
@@ -146,12 +155,14 @@ private:
   LavaWaterScene lava_water_scene_{};
   SodiumWaterScene sodium_water_scene_{};
   OilFireScene oil_fire_scene_{};
+  MossGardenScene moss_garden_scene_{};
 
   FixtureStateSnapshot fixture_{};
   DynamicsStats dynamics_stats_{};
   LavaWaterSceneStats lava_water_stats_{};
   SodiumWaterSceneStats sodium_water_stats_{};
   OilFireSceneStats oil_fire_stats_{};
+  MossGardenSceneStats moss_garden_stats_{};
 };
 
 } // namespace espsand::sim
