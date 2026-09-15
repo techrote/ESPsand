@@ -38,42 +38,40 @@ First complete product runtime/scene, normalized IMU conditioning, shared materi
 
 ### C2. ES-008 — Sodium-like + Water and Oil + Fire
 
-Adds finite energetic scenes and real multi-scene BOOT cycling while reusing shared reactions/fire lifecycle. Three-scene implementation reached 79/79 native tests before ES-009.
+Adds finite energetic scenes and real multi-scene BOOT cycling while reusing shared reactions/fire lifetime.
 
-### C3. ES-009 — Moss Garden + Mites and readability baseline
+### C3. ES-009 — Moss Garden + Mites and first readability baseline
 
-ES-009 adds the slow ecology scene and also incorporates direct physical-board readability feedback from the first chemistry builds.
+ES-009 adds moisture-dependent ecology, bounded mite agents, full-perimeter product worlds and render-only temporal persistence. It also removes redundant product wall rings and first re-composes the chemistry scenes for larger 8x8-readable shapes.
 
-Implemented baseline:
+The ES-009 baseline reached **91/91 native tests**, product firmware at 10.6% RAM / 34.8% flash, and bring-up at 9.5% / 31.2%.
 
-- Moss Garden with moisture-gated bounded growth energy;
-- local moss spread/reinforcement and plant-like anti-gravity shoots;
-- fixed three-slot mite agent array with two active initially;
-- deterministic seek/wander behavior, biomass feeding, energy gain/loss and starvation;
-- slider rain, combo mite/seed event and bounded shake scatter;
-- mite/growth state included in model hashing;
-- high-contrast post-downsample mite overlay;
-- product scene order becomes `Lava -> Sodium -> Oil -> Moss -> Lava`;
-- explicit containment wall rings are removed from **all product scenes** because world bounds already block out-of-range transport;
-- all logical edge cells and therefore the full 28-LED physical perimeter are available to scene content;
-- Lava, Sodium and Oil layouts are re-composed into larger coherent sources/pools/layers/fronts for 8x8 legibility;
-- deterministic scene-specific temporal presentation persistence reduces frame-to-frame cell churn without affecting model state;
-- reaction and mite overlays remain crisp by being applied after persistence;
-- prior chemistry behavior, determinism and output limiting remain covered by regression tests.
+### C3.1. Issue #35 — structured-diversity readability correction
 
-The first full ES-009 implementation probe passed **91/91 native tests**, product firmware built at 10.6% RAM / 34.8% flash, and bring-up remained 9.5% / 31.2%.
+Direct physical feedback after ES-009 showed the first re-composition had moved too far toward large homogeneous blocks. Issue #35 therefore refines the presentation contract before adding more scene breadth:
 
-Physical confirmation is still required for the actual goal behind the rework: scenes should now be more understandable, perimeter LEDs should participate naturally, and persistence should reduce jitter without excessive smear.
+- Beauty projection now preserves how many of the four logical subcells actually occupy each physical LED, preventing a one-cell stream from appearing as full as a four-cell block;
+- water/oil/lava/moss receive mild deterministic structural contrast based on stable coordinates, material boundaries and actual motion—not PRNG/twinkle noise;
+- Lava uses an irregular water shoreline, varied fill depth, thin meandering hot stream and falling refill rivulets;
+- Sodium uses an uneven pool, separated single drops and falling water rivulets;
+- Oil uses shallow irregular water, discontinuous fuel ribbons/pockets and a sparse left-originating ignition front;
+- Moss model state is intentionally unchanged; the renderer exposes structure in its large wet/green bodies;
+- the no-wall-ring/full-28-LED-perimeter contract is preserved;
+- dedicated anti-blockiness tests guard initial and settled product projections without replacing causal scene tests.
+
+The implementation probe reached **95/95 native tests**, including 4/4 new readability tests, with product firmware at 10.6% RAM / 34.9% flash and bring-up unchanged at 9.5% / 31.2%.
+
+Subjective success still requires the physical board: the goal is coherent material bodies with visible internal structure, not either broad flat slabs or random confetti.
 
 ## Milestone D — Breadth and showcase polish
 
 ### D1. Tracer/Dissolution Plume + one additional scene
 
-Next: implement concentration advection/diffusion and dramatic concentration-dependent colour. Select one additional behavior by novelty-per-complexity after profiling the four current product scenes.
+Next after physical review of the corrected four-scene baseline: implement concentration advection/diffusion and dramatic concentration-dependent colour. Apply the structured-diversity lesson from #35 from the start. Select one additional behavior by novelty-per-complexity after profiling the existing scenes.
 
 ### D2. v0 integration/release
 
-Tune scene order/defaults/transitions, motion thresholds, optional touch mappings, presentation persistence, palette/contrast, serial diagnostics, brightness policy, soak stability, documentation and release metadata. Physical validation evidence from the four current scenes should directly inform this pass.
+Tune scene order/defaults/transitions, motion thresholds, optional touch mappings, presentation persistence, coverage/structural contrast, palette, serial diagnostics, brightness policy, soak stability, documentation and release metadata. Physical validation evidence should directly inform this pass.
 
 ## Dependency graph
 
@@ -95,6 +93,8 @@ C2
  ↓
 C3
  ↓
+C3.1
+ ↓
 D1
  ↓
 D2
@@ -114,6 +114,8 @@ Every milestone preserves:
 - bounded per-tick work/no unbounded scheduler catch-up;
 - tracked-mass conservation for shared transport/reactions except documented scene-owned injection/growth;
 - physical display perimeter is content space, not implicit containment UI;
+- renderer/presentation state never feeds back into deterministic simulation;
+- readability favors structured information density over both monolithic slabs and arbitrary decorative noise;
 - explicit distinction between automated evidence and physical-board validation.
 
 ## Deferred post-v0 directions

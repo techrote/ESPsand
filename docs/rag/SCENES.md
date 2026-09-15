@@ -1,91 +1,97 @@
 # ESPsand v0 scene catalogue
 
-Scenes are curated demonstrations built on shared material/reaction primitives. On an 8x8 matrix the quality bar is macroscopic readability: a viewer should be able to recognize broad bodies, fronts and agents rather than infer meaning from isolated flickering cells.
+Scenes are curated demonstrations built on shared material/reaction primitives. On an 8x8 matrix the quality bar is macroscopic readability **without sacrificing too much spatial information to giant same-colour blocks**.
 
-## Product boundary policy — ES-009
+## Product boundary policy
 
-Product scenes no longer reserve a one-cell logical wall around the 16x16 world. `DynamicsEngine` already rejects out-of-bounds movement, so the explicit wall ring was redundant containment and, after 2x2 downsampling, visually contaminated every physical perimeter pixel.
+Product scenes use the 16x16 array bounds as containment and do not reserve a one-cell logical wall ring. All 256 logical positions are available to content, so all **28 physical perimeter LEDs** may participate in animation.
 
-All 16x16 logical positions are now available to product content, including the four logical edges. Consequently all **28 physical perimeter LEDs** of the 8x8 matrix may participate in animation. Explicit wall material remains valid for test fixtures or future deliberately authored obstacles; it is no longer the default product-scene boundary.
+Explicit wall material remains valid for fixtures or deliberately authored obstacles; it is not default scene scaffolding.
 
-ES-009 also re-composes the first three scenes around larger semantic shapes and adds bounded render-only temporal persistence. Persistence does not alter model state or PRNG evolution. Reaction highlights and agent overlays are applied after persistence so important events remain crisp.
+## Readability policy — issue #35
 
-## Scene 1 — Lava + Water — ES-009 composition
+Physical feedback after ES-009 established a second failure mode: broad semantic shapes were easier to recognize than the original fine-grained motion, but large rectangular bodies of one material still discarded too much visual information.
 
-**Visual identity:** a central orange/red lava source descending into a coherent full-width blue/cyan basin, producing dark crust and pale/bright steam.
+Current product composition therefore aims for **structured diversity**:
 
-**Autonomous loop:** water occupies the lower full-width band; a four-logical-cell-wide lava source begins at the top centre, with an early central contact path to make the reaction legible quickly. Periodic lava arrives through a narrow central vent while slower water replenishment targets the basin. Gravity, heat, gas rise and lava/water -> crust/steam remain shared ES-006 mechanics.
+- irregular shorelines/depths rather than flat slabs;
+- thin sources, falling rivulets and sparse drops rather than broad injection blocks;
+- ribbons/pockets/fronts rather than multiple solid material rows;
+- coherent material bodies with renderer-visible coverage/boundaries rather than random holes/confetti.
 
-**Inputs:** tilt redirects shared transport; strong motion may perform bounded mass-preserving crust remixing; slider adds lava at the selected full-width X; combo inserts one bounded lava/water contact pair. Independent A/B touch zones remain disabled.
+The shared physics remains authoritative. Scene policy controls only deterministic starting/source geometry and bounded scene events.
 
-The layout change is deliberate and increments the Lava + Water scene schema to version 2.
+## Scene 1 — Lava + Water — schema 3
 
-## Scene 2 — Sodium-like + Water — ES-009 composition
+**Visual identity:** a thin orange/red lava stream descends through open space toward an irregular blue/cyan water body, producing dark crust and pale/bright steam.
 
-**Visual identity:** paired pale/warm reactant drops falling toward a coherent blue pool, followed by sharp finite fire/steam events.
+**Starting geometry:** water surface height varies by column and the first one or two depth layers use lower/varied fill mass. Lava follows a roughly two-logical-cell-wide meandering central path rather than a square source block. A seeded near-contact cell still guarantees useful early interaction.
 
-**Autonomous loop:** water forms a full-width lower pool. Sodium-like material begins as a few paired logical cells so each reactant reads as a larger physical feature rather than a single downsampled speck. Autonomous replenishment inserts paired top drops; slower water refill maintains the pool. Contact still uses the centralized sodium-like + water reaction and shared reaction impulse.
+**Autonomous loop:** lava attempts bounded injection through several narrow central vent positions. Water replenishment arrives from staggered top-edge inlet positions as falling rivulets instead of directly painting more basin cells. Shared gravity then decides where those additions settle.
 
-**Inputs:** tilt controls ordinary transport; shake/tap/motion increase shared mobility; slider injects sodium-like material at the selected full-width X; combo inserts one bounded reactant/water pair. The scene remains complete with BOOT + IMU only.
+**Inputs:** tilt redirects shared transport; strong motion may perform bounded mass-preserving crust remixing; slider injects a top-edge lava drop near selected X; combo inserts one bounded lava/water contact pair. Independent A/B touch zones remain disabled.
 
-The composition change increments the Sodium-like + Water scene schema to version 2. This remains simulation-only content and contains no real reactive-metal procedure.
+The issue-#35 topology change deliberately increments the scene schema from 2 to **3**.
 
-## Scene 3 — Oil + Fire — ES-009 composition
+## Scene 2 — Sodium-like + Water — schema 3
 
-**Visual identity:** a broad amber low-density oil layer above a thin blue water layer, with a directional orange/yellow flame front and dim smoke after burn-out.
+**Visual identity:** sparse pale/warm individual reactant drops over an uneven blue pool, followed by sharp finite fire/steam events.
 
-**Autonomous loop:** oil spans the width above water. Initial ignition starts at the left edge so propagation can read as a front rather than scattered flashing. Shared oil/fire reactions consume finite fuel; shared fire lifetime produces smoke and allows a visible quiet/extinguished interval before sparse refill and re-ignition.
+**Starting geometry:** the pool uses a per-column irregular surface and layered fill masses. Initial sodium-like material is several separated **single logical drops** plus one near-contact drop; the earlier paired/broader-drop composition is removed.
 
-**Inputs:** tilt redistributes the shared oil layer; shake/motion rearrange fuel/fire/smoke through shared transport disturbance; slider adds oil at the selected full-width X; combo ignites one existing oil cell.
+**Autonomous loop:** sodium replenishment inserts one top-edge drop at a time. Slower water refill enters as a falling rivulet from staggered inlet positions. Contact still uses the centralized sodium-like + water reaction and shared bounded reaction impulse.
 
-The composition change increments the Oil + Fire scene schema to version 2. This is stylized simulation content, not fuel or ignition guidance.
+**Inputs:** tilt controls ordinary transport; shake/tap/motion increase shared mobility; slider inserts one sodium-like top drop near selected X; combo inserts one bounded reactant/water pair.
 
-## Scene 4 — Moss Garden + Mites — ES-009
+The issue-#35 topology change increments the scene schema from 2 to **3**. This remains simulation-only content and contains no real reactive-metal procedure.
 
-**Visual identity:** a subdued blue wet substrate, spreading green moss and brighter plant-like shoots, with 1–3 high-contrast magenta/white mite markers moving independently above the material field.
+## Scene 3 — Oil + Fire — schema 3
 
-**Autonomous loop:**
+**Visual identity:** broken amber oil ribbons/pockets floating above irregular blue water, with a sparse left-originating orange/yellow flame front and dim smoke after burn-out.
 
-- moss accumulates bounded growth energy only when moisture is nearby;
-- growth energy can reinforce existing biomass, spread laterally into wet neighboring space, or extend shoot-like cells against projected gravity;
-- water remains ordinary shared mobile material, so board tilt changes moisture distribution and therefore future growth opportunity;
-- two mites start active in a fixed three-slot agent array;
-- mites deterministically seek nearby moss, wander through safe non-liquid cells, consume biomass, gain energy from feeding, lose energy over time and starve when food disappears;
-- periodic bounded rain provides autonomous moisture so the ecology remains active without touch.
+**Starting geometry:** water depth varies by column. Oil occupies discontinuous surface and secondary ribbon positions rather than several full-width solid rows; cell mass also varies modestly. A small number of left-side oil cells begin as fire so the front has direction without creating a large initial bright block.
 
-Mites are explicit model-owned agents rather than fake material cells. Their position/energy/active state and the scene growth-energy reservoir participate in state hashing because they affect future simulation. Rendering overlays them after 16x16 -> 8x8 aggregation so they remain visible without replacing the world cell under them.
+**Autonomous loop:** shared oil/fire reactions consume finite fuel and generic fire lifetime produces smoke/extinction. During refill phase, new oil is inserted near the current authored water-surface region one cell at a time; re-ignition preferentially starts at the leftmost existing fuel.
 
-**Inputs:** slider produces a bounded rain pulse around the selected X; combo wakes/spawns an available mite or, if all mite slots are active, seeds moss near water; strong shake/tap/motion scatters active mites under the event budget. Independent A/B touch zones remain disabled.
+**Inputs:** tilt redistributes fuel through shared transport; shake/motion alter mobility; slider adds one oil top drop near selected X; combo ignites one existing oil cell.
 
-**Automated evidence:** moisture prerequisite, bounded growth, feeding and energy gain, starvation, deterministic paths/state hashes, tilt-dependent future ecology, independent agent motion, overlay visibility, render persistence and bounded touch/motion events are all host tested.
+The issue-#35 topology change increments the scene schema from 2 to **3**. This is stylized simulation content, not fuel or ignition guidance.
+
+## Scene 4 — Moss Garden + Mites — schema 1
+
+**Visual identity:** wet blue substrate, spreading green moss/plant shoots and 1–3 high-contrast mite markers moving independently above the material field.
+
+The issue-#35 correction does **not** change Moss Garden model state or scene schema. Its existing ecology remains:
+
+- moisture-gated bounded growth energy;
+- lateral wet growth and anti-gravity shoots;
+- two initially active mites in a fixed three-slot array;
+- deterministic food seeking/wandering, feeding, energy gain/loss and starvation;
+- bounded autonomous rain;
+- slider rain, combo mite-wake/seed and strong-motion scatter under event budget.
+
+Large wet/green regions are made less visually monolithic by the shared coverage-aware/structural Beauty projection, not by injecting random holes into the ecology.
 
 ## Scene 5 — Tracer / Dissolution Plume — future
 
-**Visual identity:** localized concentration source blooming into a carrier fluid with strong concentration-dependent colour change.
+Future tracer work should preserve the same information-density lesson: localized concentration and plume boundaries should remain readable on 8x8 without becoming either one large flat colour or incoherent random speckle.
 
-**Required behavior:** concentration advection/diffusion, visible plume transport and eventual dilution rather than arbitrary colour cycling. Any touch mapping must continue to use the accepted slider/combo semantics rather than unsupported A/B zones.
-
-## Scene 6+ candidates
-
-After profiling the implemented scenes, choose by maximum new visible behaviour per implementation complexity: ice/melt/refreeze, volcano/pressure vent, smoke/thermal convection, fantasy corrosion, seed/fire/regrowth, or a carefully bounded "everything box".
-
-## Scene order and persistence — ES-009
-
-The stable product order is:
+## Product order
 
 ```text
 Lava + Water -> Sodium-like + Water -> Oil + Fire -> Moss Garden -> Lava + Water
 ```
 
-Cold boot starts at Lava + Water. Short BOOT resets the current scene at exactly its current seed. Long BOOT advances one entry and increments the deterministic seed before initializing the next scene. Scene selection is not persisted across reboot in v0 yet.
+Cold boot starts at Lava + Water. Short BOOT resets the current scene at the same seed. Long BOOT advances one entry and increments the deterministic seed. Scene selection is not persisted across reboot in v0.
 
 ## Content quality bar
 
-A scene is not complete merely because named materials exist. It should pass four tests:
+A scene should pass five tests:
 
-1. its large-scale composition is recognizable on the physical 8x8 matrix without serial output;
-2. tilt or motion changes behavior in a causally understandable way;
-3. it has an autonomous arc such as contact/depletion/recovery/growth rather than decorative looping;
-4. the physical perimeter is available to content rather than consumed by invisible implementation scaffolding.
+1. its overall subject is recognizable on the physical 8x8 matrix without serial output;
+2. material bodies expose enough edges/coverage/texture that large regions do not collapse into featureless blocks;
+3. tilt or motion changes behavior in a causally understandable way;
+4. it has an autonomous arc such as contact/depletion/recovery/growth rather than decorative looping;
+5. the physical perimeter remains content space rather than hidden implementation scaffolding.
 
-Automated tests can prove deterministic state, bounds, scene distinction and work limits; subjective physical readability remains a board-validation question.
+Automated tests enforce determinism, bounds, work limits, projection coverage and coarse blockiness constraints. Subjective physical readability remains a board-validation question.

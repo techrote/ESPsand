@@ -22,14 +22,17 @@ pure model + scene policy
 shared dynamics
   gravity transport / density / gas / heat / bounded reactions / fire lifetime
           ↓
-pure rendering + presentation
-  16x16 world -> 8x8 frame -> bounded temporal persistence / overlays
+pure renderer
+  16x16 world -> coverage-aware / structurally shaded 8x8 Beauty frame
+          ↓
+runtime presentation
+  bounded temporal persistence -> transient reaction/agent overlays
           ↓
 physical output gateway
   brightness ceiling + aggregate-load limiter -> RGB chain
 ```
 
-Dependencies point inward. Pure model, scene policy, shared dynamics, input conditioning, renderer/presentation helpers and output limiter contain no Arduino GPIO/LED-driver dependencies.
+Dependencies point inward. Model, scene policy, shared dynamics, input conditioning, renderer/presentation helpers and output limiter contain no Arduino GPIO/LED-driver dependencies.
 
 Milestone ownership:
 
@@ -38,107 +41,92 @@ Milestone ownership:
 - ES-006: shared material dynamics;
 - ES-007: first product scene/runtime;
 - ES-008: multi-scene energetic catalogue;
-- ES-009: bounded ecology/agents plus physical-readability rework of all existing product scenes.
+- ES-009: bounded ecology/agents, full-perimeter product worlds and temporal presentation persistence;
+- issue #35: coverage-aware projection, deterministic structural contrast and structured-diversity scene topology.
 
-## Current repository shape
+## Product world boundaries
 
-The pure core now additionally contains:
-
-```text
-include/espsand/render/scene_effects.hpp
-include/espsand/sim/moss_garden_scene.hpp
-src/scene_effects.cpp
-src/moss_garden_scene.cpp
-test/test_moss_garden/
-```
-
-`MossGardenScene` remains inside pure core. Mites are bounded model agents, not board/runtime objects.
-
-## Product world boundaries — ES-009
-
-Product scenes use the fixed 16x16 array bounds as containment. `DynamicsEngine::try_move()` already rejects targets outside `World::in_bounds()`, so the explicit one-logical-cell wall ring previously placed by product scene initializers was redundant.
-
-ES-009 removes that wall ring from Lava + Water, Sodium-like + Water and Oil + Fire, and Moss Garden never adds one. This is intentionally different from the non-product deterministic/dynamics fixtures, which may retain explicit wall cells because their layouts are regression substrates.
+Product scenes use the fixed 16x16 array bounds as containment. `DynamicsEngine` rejects out-of-bounds moves, so no product scene reserves a containment wall ring.
 
 Consequences:
 
 - all 256 logical positions are available to product content;
-- no product-scene wall material is reserved solely for containment;
-- because 2x2 logical blocks map to one physical pixel, the full 8x8 perimeter—28 LEDs—can now display scene content instead of being influenced by a hidden border;
-- explicit wall material remains available for future authored obstacles.
+- the full 8x8 physical perimeter (28 LEDs) can display scene content;
+- explicit wall material remains available for authored obstacles and non-product fixtures.
 
-## Product scene catalogue — ES-009
-
-The pure-core order is:
+## Product scene catalogue
 
 ```text
 Lava + Water -> Sodium-like + Water -> Oil + Fire -> Moss Garden -> Lava + Water
 ```
 
-`scene_name`, `next_product_scene`, `is_product_scene` and `kProductSceneOrder` keep lifecycle semantics host-testable.
-
-- cold boot: Lava + Water;
-- short BOOT: exact current-seed reset;
-- long BOOT: next scene + deterministic seed increment;
-- fixture IDs never enter product cycling.
+Cold boot begins with Lava. Short BOOT resets the active scene at the same seed. Long BOOT advances one scene and increments the deterministic seed. Fixture scenes never enter product cycling.
 
 ## Runtime scheduling
 
 Normal `esp32s3` boots `SceneRuntime`; `esp32s3_bringup` remains the hardware-isolation target.
 
-Current bounded schedules remain approximately:
+Current bounded targets remain:
 
-- IMU poll: 5 ms (~200 Hz target);
-- model tick: 16,667 us (~60 Hz target);
-- render: 16,667 us (~60 Hz target);
+- IMU poll: 5 ms (~200 Hz);
+- model tick: 16,667 us (~60 Hz);
+- render: 16,667 us (~60 Hz);
 - telemetry: 1 Hz.
 
-Missed deadlines are skipped rather than creating unbounded catch-up. These rates remain provisional until physical telemetry is captured.
+Missed deadlines are skipped instead of accumulated. Physical telemetry remains authoritative for actual timing.
 
-## Input boundary
+## Deterministic model and scene schemas
 
-Pure-core `MotionInterpreter` keeps low-pass gravity separate from transient shake/motion/tap/spin and projects through the explicit board-to-matrix transform. `TouchZones` owns hardware sensing; runtime consumes only accepted semantic touch fields.
+`World` remains fixed 16x16 storage of compact cells. `Model` owns PCG32, tick, work budgets, product scene policy and future-affecting scene state.
 
-Independent A/B touch zones remain disabled. Slider/combo/noise semantics are the only current bare-board touch contract, and all product scenes remain functional with BOOT + IMU alone.
+Moss Garden owns a fixed three-slot mite array plus bounded growth energy. Mite x/y/energy/active values are hashed because they affect future ecology.
 
-## Deterministic model and Moss Garden agents
+Current product schemas:
 
-`World` remains 16x16 fixed storage of 8-byte cells. `Model` owns PCG32, tick, work budgets, scene objects and state hashing.
+- Lava + Water: **3**;
+- Sodium-like + Water: **3**;
+- Oil + Fire: **3**;
+- Moss Garden: **1**.
 
-Moss Garden adds a fixed three-slot mite array plus a bounded growth-energy reservoir. Two mites start active. A mite has only x, y, energy and active state. Those values and growth energy are hashed because they affect future simulation. No agent container grows dynamically.
-
-Moss biomass remains ordinary `MaterialId::kMoss` world state. Mites occupy an overlay state and therefore may consume a moss cell without replacing it with an agent material.
-
-Scene schema identities:
-
-- Lava + Water: version 2 after ES-009 composition rework;
-- Sodium-like + Water: version 2;
-- Oil + Fire: version 2;
-- Moss Garden: version 1.
-
-The original ES-004 fixture hash path remains unchanged.
+Issue #35 changes chemistry starting/source topology and therefore deliberately increments only the three chemistry schemas. Moss model semantics do not change; its readability improvement is renderer-only. The original ES-004 fixture hash path remains unchanged.
 
 ## Shared dynamics boundary
 
-`DynamicsEngine` remains the sole generic transport/heat/reaction layer. It owns material mobility/density, gravity/buoyancy transport, heat exchange, common reactions, bounded reaction impulse and finite fire lifetime.
+`DynamicsEngine` remains the sole generic transport/heat/reaction layer. It owns density/mobility, gravity/buoyancy transport, heat exchange, centralized reactions, bounded reaction impulse and finite fire lifetime.
 
-Scene policy may arrange/inject bounded material, choose an ignition/start event, manage bounded ecology state, and expose counters. It may not duplicate fluid transport, chemistry propagation or fire lifetime.
+Scene policy may arrange/inject bounded material, choose a bounded ignition/start event, manage bounded ecology state and expose counters. It may not duplicate fluid transport, chemistry propagation or fire lifetime.
 
-Moss Garden specifically reuses shared water transport. Plant growth observes nearby water and projected gravity, while mite logic is a separate bounded ecology process.
+Issue #35 changes only deterministic layout/source geometry for Lava/Sodium/Oil; shared mechanics remain authoritative.
 
-## Rendering and presentation boundary — ES-009
+## Pure renderer boundary — issue #35
 
-`WorldRenderer` remains the pure 16x16 -> 8x8 material projection. `scene_effects` adds two deterministic presentation operations:
+`WorldRenderer` still performs the pure 16x16 -> 8x8 projection and cannot mutate simulation state.
 
-1. **temporal persistence**: blend the current base RGB frame with the immediately previous base frame using a scene-specific fixed integer weight;
-2. **mite overlay**: project active agent coordinates to their 8x8 positions with a high-contrast marker.
+Beauty mode now has two additional deterministic responsibilities required by physical readability:
 
-Presentation history is runtime/render state, not simulation state. It never affects `Model`, PRNG, reactions, movement or state hashes. Scene reset/change clears history.
+1. **logical coverage preservation** — after mass-weighted colour aggregation, the number of occupied logical subcells in each physical 2x2 block scales base colour with the fixed Q8 table `0, 136, 176, 216, 256`. A one-cell stream therefore remains visible but no longer looks as full as a four-cell block;
+2. **structural material contrast** — water/oil/lava/moss receive a small deterministic scale derived from fixed output coordinate/material phase, same-material physical neighbors and actual cell motion proxies.
 
-Render order is deliberate:
+Neither operation consumes PRNG or clock state. A fixed world yields a fixed frame. Material-ID, temperature and mass diagnostic modes retain their own semantics.
+
+Minority/high-priority accent blending occurs after coverage and structural scaling, preserving sharp fire/steam/reaction readability.
+
+This is distinct from runtime temporal persistence: coverage and structural shading are functions of the **current world**, while persistence is previous-frame presentation history.
+
+## Runtime presentation boundary
+
+`scene_effects` remains responsible for:
+
+- temporal persistence: blend current base RGB with the previous base frame using scene-specific fixed weights;
+- mite overlay: project fixed model-agent coordinates to high-contrast 8x8 markers.
+
+Presentation history is not model state and is reset on scene reset/change.
+
+Render order is:
 
 ```text
 WorldRenderer
+  [coverage + structural shading + minority accents]
  -> temporal persistence
  -> save smoothed base frame
  -> reaction highlight
@@ -148,29 +136,35 @@ WorldRenderer
  -> LEDs
 ```
 
-Reaction flashes and mites are therefore not smeared into history and every effect remains constrained by the common physical output gateway.
+Transient overlays therefore stay crisp and every effect remains constrained by the common physical gateway.
 
-## Readability rework of existing scenes
+## Structured-diversity chemistry layouts — issue #35
 
-ES-009 changes composition rather than replacing physics:
+Physical feedback showed that ES-009's broad coherent shapes still contained too many featureless same-material blocks. The chemistry scenes now use:
 
-- Lava + Water: central lava source over a full-width lower basin;
-- Sodium-like + Water: paired logical reactant drops over a full-width pool;
-- Oil + Fire: broad oil layer above water with a left-originating ignition front.
+- **Lava:** irregular water shoreline/depth, thin meandering lava stream and falling edge rivulets;
+- **Sodium:** irregular pool, separated single drops and falling water rivulets;
+- **Oil:** shallow irregular water plus discontinuous oil ribbons/pockets and sparse left-originating fire.
 
-These macro layouts are intended to make orientation and causal evolution easier to read on 64 LEDs. CI proves deterministic distinction and prior behavioral contracts still pass; only a physical board run can prove subjective readability improved.
+Moss Garden model topology stays unchanged; the shared coverage/structural renderer exposes variation in its wet/green regions without inserting decorative simulation noise.
 
-## Renderer/output budget
+The policy is intentionally between two bad extremes: neither broad rectangular slabs nor random confetti.
 
-The central physical policy is unchanged: hard brightness ceiling 32/255 plus 4096 dimensionless aggregate load units. Scene-specific requested brightness/exposure stays below that ceiling and dense output may be reduced further.
+## Input boundary
 
-No scene, presentation helper or agent overlay owns an LED driver or bypasses `MatrixOutput`/`OutputLimiter`.
+`MotionInterpreter` keeps low-pass gravity separate from transient shake/motion/tap/spin. `TouchZones` owns hardware sensing. Independent A/B touch zones remain disabled; slider/combo/noise are the accepted bare-board semantics. All scenes remain functional with BOOT + IMU alone.
+
+## Output budget
+
+The central physical policy is unchanged: hard brightness ceiling 32/255 plus 4096 dimensionless aggregate load units. Scene-specific brightness/exposure requests remain below the ceiling and dense output may be reduced further.
+
+No scene, renderer helper, persistence pass or overlay owns an LED driver or bypasses `MatrixOutput`/`OutputLimiter`.
 
 ## Runtime safety
 
 - no blocking scene delays;
-- no dynamic allocation in hot model/dynamics/ecology loops;
-- fixed world, fixed agent array and fixed scratch storage;
+- no dynamic allocation in hot model/dynamics/ecology/render loops;
+- fixed world, fixed agents and fixed renderer scratch arrays;
 - bounded event/reaction work;
 - no recursive reaction processing;
 - missed schedules skip rather than backlog;
@@ -179,8 +173,6 @@ No scene, presentation helper or agent overlay owns an LED driver or bypasses `M
 
 ## Serial diagnostics
 
-Common telemetry retains scene/seed/tick/hash, measured rates, worst tick/loop times, gravity/motion and limiter state.
+Common telemetry retains scene/seed/tick/hash, measured rates, worst tick/loop times, gravity/motion and limiter state. Scene lines expose chemistry or ecology counters.
 
-Scene lines report existing chemistry counters plus Moss Garden fields: water/moss mass, active mite count, growth energy, growth/reinforcement, mite movement/feed/starvation, rain/seed/scatter and event-budget usage.
-
-Telemetry provides evidence plumbing; visual readability, handling response and thermal safety still require physical-board observations.
+Telemetry provides evidence plumbing. Subjective readability, handling response and thermal safety still require physical-board observations.

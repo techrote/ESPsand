@@ -15,6 +15,11 @@ constexpr std::uint8_t kLavaMass = 232;
 constexpr std::uint8_t kWaterMass = 220;
 constexpr std::int16_t kLavaTemperature = 1700;
 constexpr std::int16_t kWaterTemperature = 24;
+// clang-format off
+constexpr std::array<int, kWorldWidth> kWaterSurface{{
+    13, 12, 13, 11, 12, 10, 11, 12, 10, 11, 12, 11, 13, 12, 13, 12,
+}};
+// clang-format on
 
 Cell material_cell(MaterialId material, std::uint8_t mass, std::int16_t temperature = 0) noexcept {
   Cell cell{};
@@ -22,6 +27,18 @@ Cell material_cell(MaterialId material, std::uint8_t mass, std::int16_t temperat
   cell.mass = mass;
   cell.temperature = temperature;
   return cell;
+}
+
+Cell water_cell_for(int x, int y) noexcept {
+  const int surface = kWaterSurface[static_cast<std::size_t>(x)];
+  const int depth = y - surface;
+  std::uint8_t mass = kWaterMass;
+  if (depth == 0) {
+    mass = static_cast<std::uint8_t>(126 + (x % 3) * 12);
+  } else if (depth == 1) {
+    mass = static_cast<std::uint8_t>(176 + (x % 2) * 14);
+  }
+  return material_cell(MaterialId::kWater, mass, kWaterTemperature);
 }
 
 bool can_inject_into(const Cell& cell) noexcept {
@@ -58,16 +75,15 @@ bool inject_lava_vent(World& world, Pcg32& prng, std::uint8_t& injected_x) noexc
   return false;
 }
 
-bool refill_water_basin(World& world, Pcg32& prng, std::uint8_t& injected_x) noexcept {
-  const Cell water = material_cell(MaterialId::kWater, kWaterMass, kWaterTemperature);
-  const std::uint32_t start = prng.bounded(static_cast<std::uint32_t>(kWorldWidth));
-  for (int y = static_cast<int>(kWorldHeight) - 1; y >= 10; --y) {
-    for (std::uint32_t offset = 0; offset < kWorldWidth; ++offset) {
-      const int x = static_cast<int>((start + offset) % kWorldWidth);
-      if (try_inject(world, x, y, water)) {
-        injected_x = static_cast<std::uint8_t>(x);
-        return true;
-      }
+bool inject_water_rivulet(World& world, Pcg32& prng, std::uint8_t& injected_x) noexcept {
+  constexpr std::array<int, 8> kInletXs{{1, 14, 2, 13, 0, 15, 3, 12}};
+  const std::uint32_t start = prng.bounded(kInletXs.size());
+  for (std::uint32_t offset = 0; offset < kInletXs.size(); ++offset) {
+    const int x = kInletXs[(start + offset) % kInletXs.size()];
+    const std::uint8_t mass = static_cast<std::uint8_t>(142U + ((x & 1) != 0 ? 24U : 0U));
+    if (try_inject(world, x, 0, material_cell(MaterialId::kWater, mass, kWaterTemperature))) {
+      injected_x = static_cast<std::uint8_t>(x);
+      return true;
     }
   }
   return false;
@@ -108,7 +124,7 @@ bool inject_reaction_pair(World& world, Pcg32& prng) noexcept {
     }
 
     *first = material_cell(MaterialId::kLava, 210, 1800);
-    *second = material_cell(MaterialId::kWater, 210, 20);
+    *second = material_cell(MaterialId::kWater, 154, 20);
     return true;
   }
   return false;
@@ -162,23 +178,30 @@ float disturbance_strength(const InputFrame& input) noexcept {
 void LavaWaterScene::initialize(World& world, Pcg32& prng) const noexcept {
   world.clear();
 
-  const Cell water = material_cell(MaterialId::kWater, kWaterMass, kWaterTemperature);
-  for (int y = 10; y < static_cast<int>(kWorldHeight); ++y) {
-    for (int x = 0; x < static_cast<int>(kWorldWidth); ++x) {
-      static_cast<void>(world.set_cell(x, y, water));
+  for (int x = 0; x < static_cast<int>(kWorldWidth); ++x) {
+    const int surface = kWaterSurface[static_cast<std::size_t>(x)];
+    for (int y = surface; y < static_cast<int>(kWorldHeight); ++y) {
+      static_cast<void>(world.set_cell(x, y, water_cell_for(x, y)));
     }
   }
 
-  const Cell lava = material_cell(MaterialId::kLava, kLavaMass, kLavaTemperature);
-  for (int y = 0; y <= 3; ++y) {
-    for (int x = 6; x <= 9; ++x) {
-      static_cast<void>(world.set_cell(x, y, lava));
-    }
+  // clang-format off
+  constexpr std::array<std::array<int, 2>, 12> kLavaStream{{
+      {{7, 0}}, {{8, 0}}, {{7, 1}}, {{7, 2}}, {{8, 3}}, {{8, 4}},
+      {{7, 5}}, {{8, 6}}, {{7, 7}}, {{8, 8}}, {{7, 9}}, {{8, 9}},
+  }};
+  // clang-format on
+  for (std::size_t index = 0; index < kLavaStream.size(); ++index) {
+    const auto& point = kLavaStream[index];
+    const std::uint8_t mass = static_cast<std::uint8_t>(174U + (index % 3U) * 24U);
+    const Cell stream_cell = material_cell(MaterialId::kLava, mass, kLavaTemperature);
+    static_cast<void>(world.set_cell(point[0], point[1], stream_cell));
   }
 
   const std::uint8_t contact_x = static_cast<std::uint8_t>(7U + prng.bounded(2U));
-  static_cast<void>(world.set_cell(contact_x, 8, lava));
-  static_cast<void>(world.set_cell(contact_x, 9, lava));
+  const int contact_y = kWaterSurface[contact_x] - 1;
+  const Cell contact_cell = material_cell(MaterialId::kLava, kLavaMass, kLavaTemperature);
+  static_cast<void>(world.set_cell(contact_x, contact_y, contact_cell));
 }
 
 LavaWaterSceneStats LavaWaterScene::before_dynamics(LavaWaterTickContext context) const noexcept {
@@ -195,7 +218,7 @@ LavaWaterSceneStats LavaWaterScene::before_dynamics(LavaWaterTickContext context
   }
 
   if (context.tick != 0U && context.tick % kAutoWaterPeriodTicks == 0U) {
-    if (refill_water_basin(world, prng, stats.last_injection_x)) {
+    if (inject_water_rivulet(world, prng, stats.last_injection_x)) {
       ++stats.autonomous_water_injections;
     }
   }
