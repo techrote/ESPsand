@@ -204,8 +204,7 @@ void Model::step(const InputFrame& input) noexcept {
     dynamics_stats_ = dynamics_engine_.step(world_, frame, tick_, event_budget_, reaction_budget_);
     break;
   case SceneId::kOilFire:
-    oil_fire_stats_ =
-        oil_fire_scene_.before_dynamics({world_, prng_, frame, tick_, event_budget_});
+    oil_fire_stats_ = oil_fire_scene_.before_dynamics({world_, prng_, frame, tick_, event_budget_});
     dynamics_stats_ = dynamics_engine_.step(world_, frame, tick_, event_budget_, reaction_budget_);
     break;
   case SceneId::kDeterminismFixture:
