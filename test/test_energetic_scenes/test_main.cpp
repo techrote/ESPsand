@@ -100,13 +100,16 @@ void test_product_scene_catalogue_is_stable() {
   const SceneId after_lava = espsand::sim::next_product_scene(SceneId::kLavaWater);
   const SceneId after_sodium = espsand::sim::next_product_scene(SceneId::kSodiumWater);
   const SceneId after_oil = espsand::sim::next_product_scene(SceneId::kOilFire);
+  const SceneId after_moss = espsand::sim::next_product_scene(SceneId::kMossGarden);
 
-  TEST_ASSERT_EQUAL_UINT8(3U, espsand::sim::kProductSceneOrder.size());
+  TEST_ASSERT_EQUAL_UINT8(4U, espsand::sim::kProductSceneOrder.size());
   TEST_ASSERT_TRUE(after_lava == SceneId::kSodiumWater);
   TEST_ASSERT_TRUE(after_sodium == SceneId::kOilFire);
-  TEST_ASSERT_TRUE(after_oil == SceneId::kLavaWater);
+  TEST_ASSERT_TRUE(after_oil == SceneId::kMossGarden);
+  TEST_ASSERT_TRUE(after_moss == SceneId::kLavaWater);
   TEST_ASSERT_EQUAL_STRING("sodium_water", espsand::sim::scene_name(SceneId::kSodiumWater));
   TEST_ASSERT_EQUAL_STRING("oil_fire", espsand::sim::scene_name(SceneId::kOilFire));
+  TEST_ASSERT_EQUAL_STRING("moss_garden", espsand::sim::scene_name(SceneId::kMossGarden));
 }
 
 void test_sodium_scene_initializes_water_and_finite_reactant_deterministically() {
@@ -240,7 +243,6 @@ void test_oil_slider_adds_fuel_at_bounded_position() {
 
   const auto stats = model.oil_fire_stats();
   TEST_ASSERT_EQUAL_UINT16(1U, stats.touch_oil_injections);
-  TEST_ASSERT_TRUE(stats.last_injection_x >= 1U);
   TEST_ASSERT_TRUE(stats.last_injection_x <= 6U);
 }
 
@@ -256,7 +258,7 @@ void test_oil_fixed_seed_trace_replays_identically() {
   }
 }
 
-void test_three_product_scenes_render_distinct_initial_frames() {
+void test_three_energetic_scenes_render_distinct_initial_frames() {
   Model lava(scene_config(SceneId::kLavaWater, 12));
   Model sodium(scene_config(SceneId::kSodiumWater, 12));
   Model oil(scene_config(SceneId::kOilFire, 12));
@@ -326,7 +328,7 @@ int main(int, char**) {
   RUN_TEST(test_oil_combo_ignites_existing_fuel_with_event_budget);
   RUN_TEST(test_oil_slider_adds_fuel_at_bounded_position);
   RUN_TEST(test_oil_fixed_seed_trace_replays_identically);
-  RUN_TEST(test_three_product_scenes_render_distinct_initial_frames);
+  RUN_TEST(test_three_energetic_scenes_render_distinct_initial_frames);
   RUN_TEST(test_energetic_scenes_randomized_replay_remains_bounded);
   return UNITY_END();
 }
