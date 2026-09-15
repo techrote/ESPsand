@@ -23,7 +23,10 @@ struct EnergeticSceneTickContext {
 struct SodiumWaterSceneStats {
   std::uint16_t autonomous_sodium_injections = 0;
   std::uint16_t autonomous_water_injections = 0;
-  std::uint16_t touch_water_injections = 0;
+  union {
+    std::uint16_t touch_water_injections = 0;
+    std::uint16_t touch_sodium_injections;
+  };
   std::uint16_t burst_pairs = 0;
   std::uint8_t last_injection_x = 0;
 };
@@ -31,7 +34,10 @@ struct SodiumWaterSceneStats {
 struct OilFireSceneStats {
   std::uint16_t autonomous_oil_injections = 0;
   std::uint16_t autonomous_ignitions = 0;
-  std::uint16_t touch_ignitions = 0;
+  union {
+    std::uint16_t touch_ignitions = 0;
+    std::uint16_t touch_oil_injections;
+  };
   std::uint16_t combo_ignitions = 0;
   std::uint8_t last_injection_x = 0;
 };
