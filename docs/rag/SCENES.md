@@ -87,24 +87,24 @@ This is stylized simulation content, not real fuel/ignition guidance.
 
 **Inputs:**
 
-- slider spawns/wakes an inactive **mite** on moss near the touched X after physics;
+- slider spawns **water/rain** near the touched X after physics;
 - combo seeds a bounded moss cell near moisture;
 - strong motion scatters active mites under event budget.
 
-Mites are explicit bounded model agents rather than fake material cells. Up to three fixed mite slots exist, but only one starts active; additional agents are now an explicit user action rather than resting-screen clutter.
+Mites are explicit bounded model agents rather than fake material cells. Up to three fixed mite slots exist, but only one starts active; touch no longer changes agent count.
 
 ## Direct touch philosophy
 
 The coarse pinch-slider is no longer a quasi-parameter control. Across the catalogue it means approximately:
 
-> introduce the scene's secondary interactive material/actor where I am touching.
+> introduce the scene's secondary interactive material/event where I am touching.
 
 Mappings are deliberately scene-specific but spatially consistent:
 
 - Lava → water;
 - Sodium → water;
 - Oil → fire/ignition;
-- Moss → mite.
+- Moss → water/rain.
 
 Direct slider actions run after the shared physics pass and before rendering. The new state therefore appears near the selected X for the rendered frame before the next physics tick can move/react it.
 
