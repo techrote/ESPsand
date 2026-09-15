@@ -44,8 +44,10 @@ OutputDecision OutputLimiter::limit(const io::Frame8x8& frame,
   if (decision.frame_channel_sum != 0U && policy_.frame_load_limit != 0U) {
     const std::uint32_t current_load = estimate_load(decision.frame_channel_sum, applied);
     if (current_load > policy_.frame_load_limit) {
+      const std::uint64_t allowed_numerator =
+          static_cast<std::uint64_t>(policy_.frame_load_limit) * 255U;
       const std::uint32_t allowed =
-          (policy_.frame_load_limit * 255U) / decision.frame_channel_sum;
+          static_cast<std::uint32_t>(allowed_numerator / decision.frame_channel_sum);
       applied = static_cast<std::uint8_t>(std::min<std::uint32_t>(applied, allowed));
       decision.load_limited = true;
     }
