@@ -22,6 +22,12 @@ constexpr std::uint8_t kOilMass = 208;
 constexpr std::int16_t kSodiumTemperature = 100;
 constexpr std::int16_t kWaterTemperature = 20;
 constexpr std::int16_t kOilTemperature = 28;
+constexpr std::array<int, kWorldWidth> kSodiumWaterSurface{{
+    13, 12, 14, 11, 13, 10, 12, 11, 13, 10, 12, 11, 14, 12, 13, 11,
+}};
+constexpr std::array<int, kWorldWidth> kOilWaterSurface{{
+    15, 14, 15, 13, 14, 13, 15, 14, 15, 13, 14, 13, 15, 14, 15, 14,
+}};
 
 Cell material_cell(MaterialId material, std::uint8_t mass, std::int16_t temperature = 0,
                    std::uint8_t aux = 0) noexcept {
@@ -31,6 +37,17 @@ Cell material_cell(MaterialId material, std::uint8_t mass, std::int16_t temperat
   cell.temperature = temperature;
   cell.aux = aux;
   return cell;
+}
+
+Cell layered_water_cell(int x, int y, int surface) noexcept {
+  const int depth = y - surface;
+  std::uint8_t mass = kWaterMass;
+  if (depth == 0) {
+    mass = static_cast<std::uint8_t>(122 + (x % 4) * 10);
+  } else if (depth == 1) {
+    mass = static_cast<std::uint8_t>(170 + (x % 3) * 12);
+  }
+  return material_cell(MaterialId::kWater, mass, kWaterTemperature);
 }
 
 bool can_inject_into(const Cell& cell) noexcept {
@@ -72,34 +89,26 @@ bool inject_selected_top(World& world, float position, const Cell& material,
 
 bool inject_sodium_drop(World& world, Pcg32& prng, std::uint8_t& injected_x) noexcept {
   const Cell sodium = material_cell(MaterialId::kSodiumLike, kSodiumMass, kSodiumTemperature);
-  const std::uint32_t width = static_cast<std::uint32_t>(kWorldWidth - 1U);
-  const std::uint32_t start = prng.bounded(width);
-  for (std::uint32_t offset = 0; offset < width; ++offset) {
-    const int x = static_cast<int>((start + offset) % width);
-    Cell* first = world.try_cell(x, 0);
-    Cell* second = world.try_cell(x + 1, 0);
-    if (first == nullptr || second == nullptr || !can_inject_into(*first) ||
-        !can_inject_into(*second)) {
-      continue;
+  const std::uint32_t start = prng.bounded(static_cast<std::uint32_t>(kWorldWidth));
+  for (std::uint32_t offset = 0; offset < kWorldWidth; ++offset) {
+    const int x = static_cast<int>((start + offset) % kWorldWidth);
+    if (try_inject(world, x, 0, sodium)) {
+      injected_x = static_cast<std::uint8_t>(x);
+      return true;
     }
-    *first = sodium;
-    *second = sodium;
-    injected_x = static_cast<std::uint8_t>(x);
-    return true;
   }
   return false;
 }
 
-bool refill_water(World& world, Pcg32& prng, std::uint8_t& injected_x) noexcept {
-  const std::uint32_t start = prng.bounded(static_cast<std::uint32_t>(kWorldWidth));
-  const Cell water = material_cell(MaterialId::kWater, kWaterMass, kWaterTemperature);
-  for (int y = static_cast<int>(kWorldHeight) - 1; y >= 9; --y) {
-    for (std::uint32_t offset = 0; offset < kWorldWidth; ++offset) {
-      const int x = static_cast<int>((start + offset) % kWorldWidth);
-      if (try_inject(world, x, y, water)) {
-        injected_x = static_cast<std::uint8_t>(x);
-        return true;
-      }
+bool inject_water_rivulet(World& world, Pcg32& prng, std::uint8_t& injected_x) noexcept {
+  constexpr std::array<int, 8> kInletXs{{2, 13, 4, 11, 1, 14, 6, 9}};
+  const std::uint32_t start = prng.bounded(kInletXs.size());
+  for (std::uint32_t offset = 0; offset < kInletXs.size(); ++offset) {
+    const int x = kInletXs[(start + offset) % kInletXs.size()];
+    const std::uint8_t mass = static_cast<std::uint8_t>(136U + (x % 3) * 14U);
+    if (try_inject(world, x, 0, material_cell(MaterialId::kWater, mass, kWaterTemperature))) {
+      injected_x = static_cast<std::uint8_t>(x);
+      return true;
     }
   }
   return false;
@@ -123,20 +132,24 @@ bool inject_sodium_water_pair(World& world, Pcg32& prng) noexcept {
     }
 
     *first = material_cell(MaterialId::kSodiumLike, kSodiumMass, kSodiumTemperature);
-    *second = material_cell(MaterialId::kWater, kWaterMass, kWaterTemperature);
+    *second = material_cell(MaterialId::kWater, 148, kWaterTemperature);
     return true;
   }
   return false;
 }
 
 bool inject_oil_surface(World& world, Pcg32& prng, std::uint8_t& injected_x) noexcept {
-  const Cell oil = material_cell(MaterialId::kOil, kOilMass, kOilTemperature);
   const std::uint32_t start = prng.bounded(static_cast<std::uint32_t>(kWorldWidth));
   for (std::uint32_t offset = 0; offset < kWorldWidth; ++offset) {
     const int x = static_cast<int>((start + offset) % kWorldWidth);
-    if (try_inject(world, x, 8, oil)) {
-      injected_x = static_cast<std::uint8_t>(x);
-      return true;
+    const int water_surface = kOilWaterSurface[static_cast<std::size_t>(x)];
+    for (int rise = 1; rise <= 3; ++rise) {
+      const int y = water_surface - rise;
+      const std::uint8_t mass = static_cast<std::uint8_t>(154U + ((x + rise) % 3) * 18U);
+      if (try_inject(world, x, y, material_cell(MaterialId::kOil, mass, kOilTemperature))) {
+        injected_x = static_cast<std::uint8_t>(x);
+        return true;
+      }
     }
   }
   return false;
@@ -145,7 +158,7 @@ bool inject_oil_surface(World& world, Pcg32& prng, std::uint8_t& injected_x) noe
 bool ignite_one_oil(World& world, Pcg32& prng, bool prefer_left) noexcept {
   if (prefer_left) {
     for (std::size_t x = 0; x < kWorldWidth; ++x) {
-      for (std::size_t y = 8; y < kWorldHeight; ++y) {
+      for (std::size_t y = 0; y < kWorldHeight; ++y) {
         Cell* cell = world.try_cell(static_cast<int>(x), static_cast<int>(y));
         if (cell == nullptr || cell->material != MaterialId::kOil || cell->mass == 0U) {
           continue;
@@ -187,22 +200,24 @@ bool oil_refill_phase(std::uint64_t tick) noexcept {
 void SodiumWaterScene::initialize(World& world, Pcg32& prng) const noexcept {
   world.clear();
 
-  const Cell water = material_cell(MaterialId::kWater, kWaterMass, kWaterTemperature);
-  for (int y = 9; y < static_cast<int>(kWorldHeight); ++y) {
-    for (int x = 0; x < static_cast<int>(kWorldWidth); ++x) {
-      static_cast<void>(world.set_cell(x, y, water));
+  for (int x = 0; x < static_cast<int>(kWorldWidth); ++x) {
+    const int surface = kSodiumWaterSurface[static_cast<std::size_t>(x)];
+    for (int y = surface; y < static_cast<int>(kWorldHeight); ++y) {
+      static_cast<void>(world.set_cell(x, y, layered_water_cell(x, y, surface)));
     }
   }
 
   const Cell sodium = material_cell(MaterialId::kSodiumLike, kSodiumMass, kSodiumTemperature);
-  static_cast<void>(world.set_cell(3, 1, sodium));
-  static_cast<void>(world.set_cell(4, 1, sodium));
-  static_cast<void>(world.set_cell(10, 3, sodium));
-  static_cast<void>(world.set_cell(11, 3, sodium));
+  constexpr std::array<std::array<int, 2>, 4> kDrops{{
+      {{3, 1}}, {{11, 3}}, {{6, 5}}, {{13, 6}},
+  }};
+  for (const auto& point : kDrops) {
+    static_cast<void>(world.set_cell(point[0], point[1], sodium));
+  }
 
-  const std::uint8_t contact_x = static_cast<std::uint8_t>(6U + prng.bounded(4U));
-  static_cast<void>(world.set_cell(contact_x, 8, sodium));
-  static_cast<void>(world.set_cell(contact_x + 1U, 8, sodium));
+  const std::uint8_t contact_x = static_cast<std::uint8_t>(5U + prng.bounded(6U));
+  const int contact_y = kSodiumWaterSurface[contact_x] - 1;
+  static_cast<void>(world.set_cell(contact_x, contact_y, sodium));
 }
 
 SodiumWaterSceneStats SodiumWaterScene::before_dynamics(TickContext context) const noexcept {
@@ -216,7 +231,7 @@ SodiumWaterSceneStats SodiumWaterScene::before_dynamics(TickContext context) con
   }
 
   if (context.tick != 0U && context.tick % kSodiumWaterRefillPeriodTicks == 0U) {
-    if (refill_water(context.world, context.prng, stats.last_injection_x)) {
+    if (inject_water_rivulet(context.world, context.prng, stats.last_injection_x)) {
       ++stats.autonomous_water_injections;
     }
   }
@@ -243,25 +258,41 @@ SodiumWaterSceneStats SodiumWaterScene::before_dynamics(TickContext context) con
 void OilFireScene::initialize(World& world, Pcg32& prng) const noexcept {
   world.clear();
 
-  const Cell water = material_cell(MaterialId::kWater, kWaterMass, kWaterTemperature);
-  for (int y = 13; y < static_cast<int>(kWorldHeight); ++y) {
-    for (int x = 0; x < static_cast<int>(kWorldWidth); ++x) {
-      static_cast<void>(world.set_cell(x, y, water));
+  for (int x = 0; x < static_cast<int>(kWorldWidth); ++x) {
+    const int surface = kOilWaterSurface[static_cast<std::size_t>(x)];
+    for (int y = surface; y < static_cast<int>(kWorldHeight); ++y) {
+      static_cast<void>(world.set_cell(x, y, layered_water_cell(x, y, surface)));
     }
   }
 
-  const Cell oil = material_cell(MaterialId::kOil, kOilMass, kOilTemperature);
-  for (int y = 9; y <= 12; ++y) {
-    for (int x = 0; x < static_cast<int>(kWorldWidth); ++x) {
-      static_cast<void>(world.set_cell(x, y, oil));
+  for (int x = 0; x < static_cast<int>(kWorldWidth); ++x) {
+    const int water_surface = kOilWaterSurface[static_cast<std::size_t>(x)];
+    if (x % 4 != 1) {
+      const std::uint8_t mass = static_cast<std::uint8_t>(158U + (x % 3) * 18U);
+      static_cast<void>(world.set_cell(
+          x, water_surface - 1, material_cell(MaterialId::kOil, mass, kOilTemperature)));
+    }
+    if (x % 3 == 0 || x % 5 == 0) {
+      const std::uint8_t mass = static_cast<std::uint8_t>(142U + (x % 2) * 24U);
+      static_cast<void>(world.set_cell(
+          x, water_surface - 2, material_cell(MaterialId::kOil, mass, kOilTemperature)));
     }
   }
 
-  const Cell fire = material_cell(MaterialId::kFire, 128, 1350, 14);
-  static_cast<void>(world.set_cell(0, 10, fire));
-  static_cast<void>(world.set_cell(1, 10, fire));
+  const Cell fire = material_cell(MaterialId::kFire, 118, 1350, 14);
+  for (int x = 0; x <= 2; ++x) {
+    const int y = kOilWaterSurface[static_cast<std::size_t>(x)] - 1;
+    Cell* cell = world.try_cell(x, y);
+    if (cell != nullptr && cell->material == MaterialId::kOil) {
+      *cell = fire;
+    }
+  }
   if (prng.bounded(2U) != 0U) {
-    static_cast<void>(world.set_cell(0, 9, fire));
+    const int y = kOilWaterSurface[3] - 2;
+    Cell* cell = world.try_cell(3, y);
+    if (cell != nullptr && cell->material == MaterialId::kOil) {
+      *cell = fire;
+    }
   }
 }
 
