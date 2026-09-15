@@ -2,7 +2,6 @@
 
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
 
 #include <espsand/input/motion_interpreter.hpp>
 #include <espsand/render/world_renderer.hpp>
@@ -220,21 +219,16 @@ void test_reset_restores_exact_fixed_seed_scene() {
   TEST_ASSERT_EQUAL_UINT64(0U, model.tick());
 }
 
-void test_fixed_seed_trace_capture_is_repeatable() {
+void test_fixed_seed_trace_replays_identically() {
   Model first(lava_water_config(0x0BADC0DEULL));
   Model second(lava_water_config(0x0BADC0DEULL));
 
-  const auto initial_hash = static_cast<unsigned long long>(first.state_hash());
-  std::printf("ES007_TRACE initial=%016llX\n", initial_hash);
+  TEST_ASSERT_EQUAL_UINT64(first.state_hash(), second.state_hash());
   for (std::uint32_t tick = 0; tick < 96U; ++tick) {
     const InputFrame frame = trace_frame(tick);
     first.step(frame);
     second.step(frame);
     TEST_ASSERT_EQUAL_UINT64(first.state_hash(), second.state_hash());
-    if (tick == 0U || tick == 23U || tick == 47U || tick == 71U || tick == 95U) {
-      const auto hash = static_cast<unsigned long long>(first.state_hash());
-      std::printf("ES007_TRACE tick=%u hash=%016llX\n", tick + 1U, hash);
-    }
   }
 }
 
@@ -355,7 +349,7 @@ int main(int, char**) {
   RUN_TEST(test_combo_uses_shared_reaction_path_for_bounded_burst);
   RUN_TEST(test_pinch_slider_injects_lava_at_bounded_position);
   RUN_TEST(test_reset_restores_exact_fixed_seed_scene);
-  RUN_TEST(test_fixed_seed_trace_capture_is_repeatable);
+  RUN_TEST(test_fixed_seed_trace_replays_identically);
   RUN_TEST(test_renderer_keeps_lava_water_crust_and_steam_distinct);
   RUN_TEST(test_motion_interpreter_produces_stable_gravity_without_false_shake);
   RUN_TEST(test_motion_impulse_is_separate_from_low_pass_gravity);
