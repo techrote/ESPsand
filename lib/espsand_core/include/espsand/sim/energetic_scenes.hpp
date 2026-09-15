@@ -9,8 +9,8 @@
 
 namespace espsand::sim {
 
-inline constexpr std::uint32_t kSodiumWaterSceneSchemaVersion = 1;
-inline constexpr std::uint32_t kOilFireSceneSchemaVersion = 1;
+inline constexpr std::uint32_t kSodiumWaterSceneSchemaVersion = 2;
+inline constexpr std::uint32_t kOilFireSceneSchemaVersion = 2;
 
 struct EnergeticSceneTickContext {
   World& world;
