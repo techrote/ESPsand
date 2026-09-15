@@ -126,8 +126,9 @@ bool grow_from(World& world, const InputFrame& input, std::size_t source_index,
     }
   }
 
-  if (may_add_moss && growth_energy >= 24U &&
-      (best_moisture != 0U || source_moisture >= 48U) && (best_x != x || best_y != y)) {
+  const bool moisture_support = best_moisture != 0U || source_moisture >= 48U;
+  const bool has_spread_target = best_x != x || best_y != y;
+  if (may_add_moss && growth_energy >= 24U && moisture_support && has_spread_target) {
     Cell* target = world.try_cell(best_x, best_y);
     if (target != nullptr) {
       *target = material_cell(MaterialId::kMoss, 78, 104);
@@ -339,26 +340,31 @@ void MossGardenScene::initialize(World& world, Pcg32& prng) noexcept {
   growth_energy_ = 36;
 
   const Cell water = material_cell(MaterialId::kWater, 188);
+  // clang-format off
   constexpr std::array<std::array<int, 2>, 8> kWaterPockets{{
       {{1, 15}}, {{3, 13}}, {{5, 15}}, {{7, 14}},
       {{9, 15}}, {{11, 13}}, {{13, 15}}, {{15, 14}},
   }};
+  // clang-format on
   for (const auto& point : kWaterPockets) {
     static_cast<void>(world.set_cell(point[0], point[1], water));
   }
 
   const Cell moss = material_cell(MaterialId::kMoss, kMossInitialMass, kMossInitialAux);
+  // clang-format off
   constexpr std::array<std::array<int, 2>, 10> kMossPatches{{
       {{1, 12}}, {{2, 11}}, {{3, 12}}, {{5, 12}}, {{6, 11}},
       {{9, 12}}, {{10, 11}}, {{12, 12}}, {{13, 11}}, {{14, 12}},
   }};
+  // clang-format on
   for (const auto& point : kMossPatches) {
     static_cast<void>(world.set_cell(point[0], point[1], moss));
   }
-  static_cast<void>(world.set_cell(2, 10,
-                                   material_cell(MaterialId::kMoss, 132, 172, kMossShootFlag)));
-  static_cast<void>(world.set_cell(13, 10,
-                                   material_cell(MaterialId::kMoss, 124, 184, kMossShootFlag)));
+
+  const Cell left_shoot = material_cell(MaterialId::kMoss, 132, 172, kMossShootFlag);
+  const Cell right_shoot = material_cell(MaterialId::kMoss, 124, 184, kMossShootFlag);
+  static_cast<void>(world.set_cell(2, 10, left_shoot));
+  static_cast<void>(world.set_cell(13, 10, right_shoot));
 
   mites_[0] = {2, 11, kMiteInitialEnergy, true};
   if (prng.bounded(2U) != 0U) {
@@ -428,9 +434,9 @@ MossGardenSceneStats MossGardenScene::before_dynamics(MossGardenTickContext cont
   const bool slider_due = context.input.slider_active && context.input.slider_strength >= 0.35F &&
                           context.tick % kTouchMitePeriodTicks == 0U;
   if (slider_due && context.event_budget.try_consume()) {
+    const std::uint8_t preferred_x = slider_x(context.input.slider_position);
     for (MiteState& mite : mites_) {
-      if (!mite.active && place_mite_near_x(mite, context.world,
-                                            slider_x(context.input.slider_position))) {
+      if (!mite.active && place_mite_near_x(mite, context.world, preferred_x)) {
         ++stats.touch_mite_spawns;
         break;
       }
