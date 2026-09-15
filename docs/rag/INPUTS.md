@@ -2,120 +2,97 @@
 
 ## Philosophy
 
-ESPsand has almost no conventional UI. Physical handling is the UI. Input interpretation should therefore produce a small set of semantic values/events rather than leaking noisy raw hardware values into scenes.
+ESPsand has almost no conventional UI. Physical handling is the UI. Hardware conditioning produces a small set of normalized semantic values/events before the deterministic model boundary.
 
-Hardware conditioning and sampling cadence live outside the deterministic model. Once normalized into an `InputFrame`, a recorded input sequence is ordinary deterministic simulation data.
+Once normalized into an `InputFrame`, a recorded input sequence is ordinary deterministic simulation data. Raw sensor axes, hardware polling jitter and touch-electrical irregularity are not model entropy.
 
 ## BOOT button
 
-Required product semantics:
+Product semantics remain:
 
 - short press: reset/reseed the current scene according to runtime scene policy;
 - long press: advance to the next scene;
-- ambiguous duration between thresholds: resolve conservatively; do not trigger both.
+- ambiguous duration between thresholds: do not trigger both.
 
-A long press must not also issue a short-reset event on release.
+The simulation-side `BootEvent` remains available in `InputFrame`, but generic `Model::step()` does not silently perform lifecycle transitions. `SceneRuntime` owns product lifecycle calls.
 
-The simulation-side `BootEvent` is `kNone`, `kResetScene` or `kNextScene`. ES-004 carries that semantic event in `InputFrame`; lifecycle policy remains with the runtime/scene controller, which calls the model's explicit reset/reseed/scene-selection seam rather than making generic `Model::step()` silently change lifecycle.
+ES-007 has one product scene, so short BOOT restores the exact configured Lava + Water seed/initial state. Long BOOT currently performs a one-scene wrap by reseeding Lava + Water with seed+1 and logs that fact. Once ES-008 adds Scene 2, long BOOT should become real scene advance rather than preserving this temporary wrap behavior.
 
-## Gravity from accelerometer
+## Gravity and motion — ES-007 concrete conditioner
 
-Use a low-pass estimate of the gravity/specific-force direction while the board is under ordinary handheld motion. Transform it into matrix/world coordinates using the explicit board-axis calibration.
+`MotionInterpreter` is the pure board-independent conditioner between `ImuSample` and `InputFrame`.
 
-The model consumes a normalized 2D gravity vector plus magnitude/confidence metadata, not raw sensor axes.
+For each valid sample it:
 
-When total acceleration is far from the expected static magnitude, avoid treating the instantaneous vector as a perfect gravity direction. Preserve the previous low-frequency estimate and separately emit disturbance energy.
+- sanitizes acceleration and gyro components;
+- maintains a low-pass 3D gravity estimate;
+- derives confidence from how close instantaneous acceleration magnitude is to 1g;
+- reduces low-pass following during low-confidence/high-transient motion;
+- projects the gravity estimate through the explicit board-to-matrix transform;
+- emits bounded high-frequency `shake_energy` separately from gravity;
+- emits smoothed bounded `motion_energy` from acceleration residual and gyro activity;
+- emits a bounded `tap_impulse` for sufficiently strong residual acceleration, with a 160 ms cooldown;
+- emits signed normalized `spin_rate` from gyro Z.
 
-## Motion events
+A missing/invalid sample decays transient motion fields rather than replacing the stored gravity direction with garbage. Before the first valid IMU sample, `SceneRuntime` supplies deterministic downward gravity so Lava + Water remains autonomous and visible.
 
-The simulation-side contract provides:
-
-- `shake_energy`: sustained high-frequency/transient acceleration;
-- `tap_impulse`: short high-amplitude impulse candidate;
-- `spin_rate`: normalized useful projected rotation;
-- `motion_energy`: smoothed general agitation.
-
-Hardware/input conditioning owns thresholds, hysteresis and cooldowns so one physical action does not emit an unbounded event stream.
-
-ES-006 gives these fields shared mechanics meaning without coupling them to raw hardware. Low-frequency gravity chooses the transport direction. `shake_energy`, `motion_energy`, `tap_impulse` and absolute spin only raise a bounded transport-disturbance/mobility term; they do not overwrite the gravity vector. Signed `spin_rate` biases deterministic lateral-relaxation direction. This separation is host-tested so a shake cannot silently become a new gravity direction.
-
-Hero scenes may later layer additional bounded semantics such as crust fracture or injection on top of the same normalized fields.
+The important contract is separation: a shake may increase transport disturbance and scene fracture response, but it does not become a new low-frequency gravity direction. Host tests explicitly cover this.
 
 ## `InputFrame` contract
 
-`espsand::sim::InputFrame` is a hardware-independent value constructed once per logical tick. It contains:
+`espsand::sim::InputFrame` is constructed once per logical tick and contains:
 
 - normalized 2D gravity, gravity magnitude and confidence;
-- shake, motion, tap and spin disturbance values;
-- BOOT-derived semantic lifecycle event;
+- shake, motion, tap and signed spin disturbance values;
+- BOOT-derived lifecycle intent;
 - `cap_combo` plus its edge event;
 - coarse pinch-slider active/position/strength;
 - explicit external `noise_impulse` plus its event.
 
-Continuous normalized scalar fields are sanitized to bounded ranges at the model boundary. Gravity components and signed spin are clamped to -1..1; the other continuous fields are clamped to 0..1. Non-finite values are replaced by neutral defaults, and an invalid enum value becomes `kNone`. This is a defensive replay boundary, not hardware filtering.
+Continuous scalar fields are sanitized at the model boundary. Gravity/spin clamp to -1..1; unit-like values clamp to 0..1; non-finite values become neutral defaults.
 
-The runtime may evolve its raw-IMU conditioning independently as long as it produces this normalized contract. ES-006 deliberately consumes only this contract. Sensor sample timing, raw acceleration units and raw gyro values are not visible to `DynamicsEngine`.
+ES-006 gives the motion fields shared transport meaning: gravity chooses transport direction while shake/motion/tap/absolute spin provide a bounded mobility boost and signed spin biases lateral relaxation.
 
-## Capacitive edge input — tested board result
+ES-007 layers only scene-specific, bounded interpretation on top:
 
-ES-003/003A physically tested GPIO1..GPIO7 on the Waveshare ESP32-S3-Matrix. The bare-board result is useful but deliberately coarse:
+- sufficiently strong shake/tap/motion/noise may relocate a small capped number of existing crust cells, preserving their mass and reopening contact surfaces;
+- this is scene policy around the shared dynamics engine, not a second transport solver.
 
-- swiping along the exposed GPIO1..GPIO7 edge produces a smooth local-response motion in diagnostics;
-- a fingertip spans most or all of the edge, so individual-pad or clean two-zone operation is not reliable;
-- pinching along the PCB edge gives the strongest repeatable deliberate gesture;
-- common-mode magnitude tracks broad fingertip/PCB contact area well enough to provide a bounded intensity;
-- local channels can flash spuriously, so local A/B activity is not exposed as button-like product input.
+## Capacitive edge input — tested board truth
 
-The accepted bare-board semantics are:
+ES-003/003A physically tested GPIO1..GPIO7 on the Waveshare ESP32-S3-Matrix. The accepted bare-board semantics remain deliberately coarse:
 
 - `cap_a = 0`, `event_a = false`;
 - `cap_b = 0`, `event_b = false`;
 - `cap_combo` = normalized common-mode edge-contact intensity;
-- `event_combo` = hysteretic/cooldown-gated deliberate edge-contact event;
-- `slider_active` only when common mode is near diagnostic full scale **and at least two local channels are simultaneously active**;
-- `slider_position` = smoothed 0..1 weighted centroid of positive GPIO1..GPIO7 local response while the slider gate is active;
-- `slider_strength` = bounded broad-contact strength;
-- a strong isolated single-channel near-full excursion may produce an explicit bounded `noise_impulse`/`noise_event` input candidate.
+- `event_combo` = hysteretic/cooldown-gated deliberate broad-contact event;
+- `slider_active` requires strong common mode and at least two active local channels;
+- `slider_position` is the smoothed 0..1 weighted centroid of positive GPIO1..GPIO7 local response;
+- `slider_strength` is bounded broad-contact strength;
+- a strong isolated local excursion may produce explicit bounded `noise_impulse` / `noise_event`.
 
-The slider is intentionally a coarse direct control rather than a precision touch UI. A later scene may map it to spawn rate, reaction bias, injection position or another bounded parameter. Scene meaning is not fixed by the input layer.
+Independent A/B touch buttons were not physically supported by the bare board and must not be silently reintroduced by scene documentation or code.
+
+### ES-007 Lava + Water mapping
+
+When optional touch is available:
+
+- active slider with strength >=0.35 can inject one lava cell near the selected horizontal position, at a maximum cadence of once per 12 model ticks and subject to event budget;
+- a combo edge event requests one adjacent lava/water contact pair in available interior space; the ordinary ES-006 reaction engine then performs crust/steam conversion under the reaction budget;
+- explicit noise contributes only to the same bounded disturbance interpretation used for remixing; it is not PRNG seed material.
+
+The scene remains fully playable/observable without touch because autonomous material replenishment plus BOOT + IMU are sufficient.
 
 ### External noise is not randomness
 
-`noise_impulse` is an explicit external input and is **not** seed material, PRNG state or a hidden entropy path. If a live run observes hardware irregularity, that value is recorded in the tick's `InputFrame`. Replaying the same frames reproduces the same result.
-
-The ES-004 determinism fixture explicitly verifies that cap/noise fields can alter modeled fixture state without changing PCG32 state. ES-006 likewise introduces no hardware-entropy path: its transport mobility schedule is deterministic from tick/cell state, and any future PRNG draw must come from the model-owned PCG32 through an explicit rule.
-
-This is not pressure sensing. Coupling can vary with contact area, grip, moisture, grounding and other environmental factors.
-
-False positives are acceptable only when bounded. Local diagnostic false activity must not change scenes, corrupt state, lock the runtime or create sustained maximum brightness.
+`noise_impulse` is explicit external input, not hidden entropy. Live hardware irregularity becomes replayable only when represented in the ordered `InputFrame` sequence. Scene stochastic placement uses only the model-owned PCG32.
 
 ### Characterization mode
 
-Firmware provides a diagnostic mode/serial stream showing, per candidate touch channel:
-
-- raw reading;
-- adaptive baseline;
-- delta/normalized delta;
-- estimated noise;
-- local active state;
-- common-mode estimate;
-- slider active/position/strength;
-- isolated noise impulse/event.
-
-Local GPIO1..GPIO7 diagnostics remain useful for research and future coating/recalibration even though A/B buttons are disabled.
-
-### Normalization
-
-Touch hardware conditioning uses normalized disturbance relative to measured noise/baseline with clipping and adaptive calibration. On ESP32-S3, touch raises the raw capacitive reading.
-
-Baseline adapts slowly when idle and is frozen/slowed during strong touch. Common-mode and local-channel components remain separated so noisy local bars cannot directly trigger the accepted combo semantic.
-
-### Graceful fallback
-
-`ITouchZones` reports unavailable/disabled cleanly when hardware initialization fails. Every scene remains fully usable with button + IMU only, and no scene may depend on capacitive success.
+The separate diagnostic/bring-up code still exposes raw/baseline/noise/local/common-mode/slider/noise-event information for hardware research. Product scene code consumes semantic `TouchFrame` fields only.
 
 ## Event injection and replay
 
-Scenes consume one normalized `InputFrame` per fixed model tick. Host tests can construct these frames directly without hardware. Replay identity is defined by seed/configuration, reset/initial state, tick count and the ordered `InputFrame` sequence—not by wall-clock timing or sensor polling jitter.
+Scenes consume exactly one normalized `InputFrame` per executed model tick. Replay identity is seed/configuration + reset state + tick count + ordered `InputFrame` sequence, not wall-clock timing.
 
-ES-006 tests repeated multi-axis gravity/shake/tap/spin sequences through the full `Model::step()` path and requires byte-identical state-hash replay between duplicate models.
+ES-007 runs a scripted 96-tick duplicate-model trace containing four gravity directions plus shake, tap, combo and slider input and requires equal state hashes after every tick. A separate 1,200-tick randomized duplicate run checks the same replay/boundedness property over a larger scene history.
