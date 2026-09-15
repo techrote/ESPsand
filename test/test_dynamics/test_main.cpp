@@ -228,8 +228,7 @@ void test_motion_disturbance_does_not_change_gravity_direction() {
 
   DynamicsEngine engine;
   const auto calm_stats = engine.step(calm_world, calm, 0, calm_events, calm_reactions);
-  const auto shaken_stats =
-      engine.step(shaken_world, shaken, 0, shaken_events, shaken_reactions);
+  const auto shaken_stats = engine.step(shaken_world, shaken, 0, shaken_events, shaken_reactions);
 
   TEST_ASSERT_EQUAL_INT8(calm_stats.gravity_dx, shaken_stats.gravity_dx);
   TEST_ASSERT_EQUAL_INT8(calm_stats.gravity_dy, shaken_stats.gravity_dy);
@@ -310,13 +309,12 @@ void test_randomized_dynamics_stress_preserves_mass_and_bounds() {
     for (int x = 0; x < 16; ++x) {
       const MaterialId material =
           static_cast<MaterialId>(next() % static_cast<std::uint32_t>(MaterialId::kCount));
-      const std::uint8_t mass = material == MaterialId::kEmpty
-                                    ? 0U
-                                    : static_cast<std::uint8_t>(1U + (next() % 255U));
+      const std::uint8_t mass =
+          material == MaterialId::kEmpty ? 0U : static_cast<std::uint8_t>(1U + (next() % 255U));
       const std::int16_t temperature =
           static_cast<std::int16_t>(static_cast<std::int32_t>(next() % 4001U) - 2000);
-      TEST_ASSERT_TRUE(world.set_cell(x, y, make_cell(material, mass, temperature,
-                                                     static_cast<std::uint8_t>(next() >> 24U))));
+      TEST_ASSERT_TRUE(world.set_cell(
+          x, y, make_cell(material, mass, temperature, static_cast<std::uint8_t>(next() >> 24U))));
     }
   }
 
