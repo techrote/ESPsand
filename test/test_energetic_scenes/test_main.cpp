@@ -97,12 +97,14 @@ InputFrame trace_frame(std::uint32_t tick) {
 }
 
 void test_product_scene_catalogue_is_stable() {
+  const SceneId after_lava = espsand::sim::next_product_scene(SceneId::kLavaWater);
+  const SceneId after_sodium = espsand::sim::next_product_scene(SceneId::kSodiumWater);
+  const SceneId after_oil = espsand::sim::next_product_scene(SceneId::kOilFire);
+
   TEST_ASSERT_EQUAL_UINT8(3U, espsand::sim::kProductSceneOrder.size());
-  TEST_ASSERT_TRUE(espsand::sim::next_product_scene(SceneId::kLavaWater) ==
-                   SceneId::kSodiumWater);
-  TEST_ASSERT_TRUE(espsand::sim::next_product_scene(SceneId::kSodiumWater) ==
-                   SceneId::kOilFire);
-  TEST_ASSERT_TRUE(espsand::sim::next_product_scene(SceneId::kOilFire) == SceneId::kLavaWater);
+  TEST_ASSERT_TRUE(after_lava == SceneId::kSodiumWater);
+  TEST_ASSERT_TRUE(after_sodium == SceneId::kOilFire);
+  TEST_ASSERT_TRUE(after_oil == SceneId::kLavaWater);
   TEST_ASSERT_EQUAL_STRING("sodium_water", espsand::sim::scene_name(SceneId::kSodiumWater));
   TEST_ASSERT_EQUAL_STRING("oil_fire", espsand::sim::scene_name(SceneId::kOilFire));
 }
