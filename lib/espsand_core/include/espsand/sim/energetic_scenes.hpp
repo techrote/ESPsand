@@ -46,7 +46,8 @@ class SodiumWaterScene {
 public:
   void initialize(World& world, Pcg32& prng) const noexcept;
   SodiumWaterSceneStats before_dynamics(EnergeticSceneTickContext context) const noexcept;
-  void after_dynamics(EnergeticSceneTickContext context, SodiumWaterSceneStats& stats) const noexcept;
+  void after_dynamics(EnergeticSceneTickContext context,
+                      SodiumWaterSceneStats& stats) const noexcept;
 };
 
 class OilFireScene {
