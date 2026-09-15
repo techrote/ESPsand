@@ -217,8 +217,9 @@ void Model::initialize_fixture() noexcept {
   static_cast<void>(world_.set_cell(kFixtureCenterX, kFixtureCenterY, water));
 
   const auto interior_width = static_cast<std::uint32_t>(kWorldWidth - 2U);
+  const auto interior_height = static_cast<std::uint32_t>(kWorldHeight - 2U);
   fixture_.marker_x = static_cast<std::uint8_t>(1U + prng_.bounded(interior_width));
-  fixture_.marker_y = static_cast<std::uint8_t>(1U + prng_.bounded(interior_width));
+  fixture_.marker_y = static_cast<std::uint8_t>(1U + prng_.bounded(interior_height));
 
   if (fixture_.marker_x == kFixtureCenterX && fixture_.marker_y == kFixtureCenterY) {
     const std::uint8_t maximum = static_cast<std::uint8_t>(kWorldWidth - 2U);
@@ -234,8 +235,9 @@ void Model::relocate_fixture_marker() noexcept {
   static_cast<void>(world_.set_cell(fixture_.marker_x, fixture_.marker_y, Cell{}));
 
   const auto interior_width = static_cast<std::uint32_t>(kWorldWidth - 2U);
+  const auto interior_height = static_cast<std::uint32_t>(kWorldHeight - 2U);
   fixture_.marker_x = static_cast<std::uint8_t>(1U + prng_.bounded(interior_width));
-  fixture_.marker_y = static_cast<std::uint8_t>(1U + prng_.bounded(interior_width));
+  fixture_.marker_y = static_cast<std::uint8_t>(1U + prng_.bounded(interior_height));
 
   if (fixture_.marker_x == kFixtureCenterX && fixture_.marker_y == kFixtureCenterY) {
     const std::uint8_t maximum = static_cast<std::uint8_t>(kWorldWidth - 2U);
