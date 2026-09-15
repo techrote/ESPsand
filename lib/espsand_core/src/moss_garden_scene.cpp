@@ -181,8 +181,9 @@ bool find_nearest_moss(const World& world, const MiteState& mite, int& target_x,
     }
     const int x = static_cast<int>(index % kWorldWidth);
     const int y = static_cast<int>(index / kWorldWidth);
-    const int distance = std::abs(x - static_cast<int>(mite.x)) +
-                         std::abs(y - static_cast<int>(mite.y));
+    const int delta_x = x - static_cast<int>(mite.x);
+    const int delta_y = y - static_cast<int>(mite.y);
+    const int distance = std::abs(delta_x) + std::abs(delta_y);
     if (distance < best_distance) {
       best_distance = distance;
       target_x = x;
@@ -206,8 +207,8 @@ bool move_toward_moss(MiteState& mite, const World& world, Pcg32& prng) noexcept
         move_mite_to(mite, world, static_cast<int>(mite.x) + step_x, mite.y)) {
       return true;
     }
-    if (step_y != 0 &&
-        move_mite_to(mite, world, mite.x, static_cast<int>(mite.y) + step_y)) {
+    const int next_y = static_cast<int>(mite.y) + step_y;
+    if (step_y != 0 && move_mite_to(mite, world, mite.x, next_y)) {
       return true;
     }
     if (!x_first && step_x != 0 &&
@@ -337,10 +338,10 @@ void MossGardenScene::initialize(World& world, Pcg32& prng) noexcept {
       static_cast<void>(world.set_cell(x, y, moss));
     }
   }
-  static_cast<void>(world.set_cell(2, 10, material_cell(MaterialId::kMoss, 132, 172,
-                                                        kMossShootFlag)));
-  static_cast<void>(world.set_cell(13, 9, material_cell(MaterialId::kMoss, 124, 184,
-                                                        kMossShootFlag)));
+  const Cell left_shoot = material_cell(MaterialId::kMoss, 132, 172, kMossShootFlag);
+  const Cell right_shoot = material_cell(MaterialId::kMoss, 124, 184, kMossShootFlag);
+  static_cast<void>(world.set_cell(2, 10, left_shoot));
+  static_cast<void>(world.set_cell(13, 9, right_shoot));
 
   mites_[0] = {2, 11, kMiteInitialEnergy, true};
   mites_[1] = {13, 11, kMiteInitialEnergy, true};
@@ -366,7 +367,8 @@ MossGardenSceneStats MossGardenScene::before_dynamics(MossGardenTickContext cont
         ++wet_moss;
       }
     }
-    add_growth_energy(growth_energy_, static_cast<std::uint16_t>(std::min<unsigned>(36U, wet_moss * 3U)));
+    const unsigned gain = std::min<unsigned>(36U, wet_moss * 3U);
+    add_growth_energy(growth_energy_, static_cast<std::uint16_t>(gain));
   }
 
   if (context.tick % kGrowthPeriodTicks == 0U && growth_energy_ >= 12U) {
@@ -400,7 +402,8 @@ MossGardenSceneStats MossGardenScene::before_dynamics(MossGardenTickContext cont
   }
 
   if (context.tick != 0U && context.tick % kAutonomousRainPeriodTicks == 0U) {
-    const auto x = static_cast<std::uint8_t>(context.prng.bounded(static_cast<std::uint32_t>(kWorldWidth)));
+    const auto width = static_cast<std::uint32_t>(kWorldWidth);
+    const auto x = static_cast<std::uint8_t>(context.prng.bounded(width));
     if (inject_rain(context.world, x) != 0U) {
       ++stats.rain_pulses;
     }
