@@ -1,97 +1,145 @@
 # ESPsand v0 scene catalogue
 
-Scenes are curated demonstrations built on shared material/reaction primitives. On an 8x8 matrix the quality bar is macroscopic readability **without sacrificing too much spatial information to giant same-colour blocks**.
+Scenes are curated demonstrations built on shared material/reaction primitives. On an 8x8 matrix the quality bar is macroscopic readability without filling the display with large same-colour areas.
 
-## Product boundary policy
+## Product boundary and sparsity policy
 
-Product scenes use the 16x16 array bounds as containment and do not reserve a one-cell logical wall ring. All 256 logical positions are available to content, so all **28 physical perimeter LEDs** may participate in animation.
+Product scenes use implicit finite-world bounds rather than an explicit containment wall ring. All 16x16 logical positions—and therefore the full 28-LED physical perimeter—remain available to content.
 
-Explicit wall material remains valid for fixtures or deliberately authored obstacles; it is not default scene scaffolding.
+The current physical-tuning baseline adds a stronger content rule:
 
-## Readability policy — issue #35
+```text
+maximum product material population = 15 logical cells per MaterialId
+```
 
-Physical feedback after ES-009 established a second failure mode: broad semantic shapes were easier to recognize than the original fine-grained motion, but large rectangular bodies of one material still discarded too much visual information.
+This is intentionally stricter than the requested “less than 16 LEDs of one material” heuristic. One logical cell can affect at most one physical output block, so limiting logical cells to 15 prevents scene-owned material from expanding back into large resting slabs.
 
-Current product composition therefore aims for **structured diversity**:
+Autonomous injection/growth checks the cap before adding material. A 720-tick host regression also checks **every material after every tick** across all four product scenes, including shared reaction products such as crust, steam, fire and smoke.
 
-- irregular shorelines/depths rather than flat slabs;
-- thin sources, falling rivulets and sparse drops rather than broad injection blocks;
-- ribbons/pockets/fronts rather than multiple solid material rows;
-- coherent material bodies with renderer-visible coverage/boundaries rather than random holes/confetti.
+The cap is a presentation/content contract for current product scenes, not a generic rule imposed on diagnostic fixtures or future intentionally authored obstacles.
 
-The shared physics remains authoritative. Scene policy controls only deterministic starting/source geometry and bounded scene events.
+## Scene 1 — Lava + Water — schema 4
 
-## Scene 1 — Lava + Water — schema 3
+**Visual identity:** sparse hot lava stream/pockets meeting sparse water pockets, producing dark crust and bright steam.
 
-**Visual identity:** a thin orange/red lava stream descends through open space toward an irregular blue/cyan water body, producing dark crust and pale/bright steam.
+**Initial state:** approximately 7 lava cells and 12 water cells, distributed through the 16x16 world rather than as a full basin/source block.
 
-**Starting geometry:** water surface height varies by column and the first one or two depth layers use lower/varied fill mass. Lava follows a roughly two-logical-cell-wide meandering central path rather than a square source block. A seeded near-contact cell still guarantees useful early interaction.
+**Autonomous loop:** bounded lava vents and much slower water rivulets keep the interaction alive while respecting the 15-cell material ceiling. Gravity, heat, lava/water reaction, steam buoyancy and crust remain shared dynamics.
 
-**Autonomous loop:** lava attempts bounded injection through several narrow central vent positions. Water replenishment arrives from staggered top-edge inlet positions as falling rivulets instead of directly painting more basin cells. Shared gravity then decides where those additions settle.
+**Inputs:**
 
-**Inputs:** tilt redirects shared transport; strong motion may perform bounded mass-preserving crust remixing; slider injects a top-edge lava drop near selected X; combo inserts one bounded lava/water contact pair. Independent A/B touch zones remain disabled.
+- tilt redirects ordinary shared transport;
+- strong motion may perform bounded mass-preserving crust remixing;
+- slider spawns **water** near the touched X after the physics pass so the user sees the direct placement before the next gravity tick;
+- combo inserts one bounded lava/water contact pair.
 
-The issue-#35 topology change deliberately increments the scene schema from 2 to **3**.
+## Scene 2 — Sodium-like + Water — schema 4
 
-## Scene 2 — Sodium-like + Water — schema 3
+**Visual identity:** a few pale sodium-like drops crossing a sparse blue water field, followed by local fire/steam events.
 
-**Visual identity:** sparse pale/warm individual reactant drops over an uneven blue pool, followed by sharp finite fire/steam events.
+**Initial state:** approximately 4 sodium-like cells and 12 water cells.
 
-**Starting geometry:** the pool uses a per-column irregular surface and layered fill masses. Initial sodium-like material is several separated **single logical drops** plus one near-contact drop; the earlier paired/broader-drop composition is removed.
+**Autonomous loop:** sparse sodium-like top drops and slower water rivulets are cap-aware. Contact still uses the centralized sodium-like/water reaction and shared reaction impulse; fire lifetime remains generic.
 
-**Autonomous loop:** sodium replenishment inserts one top-edge drop at a time. Slower water refill enters as a falling rivulet from staggered inlet positions. Contact still uses the centralized sodium-like + water reaction and shared bounded reaction impulse.
+**Inputs:**
 
-**Inputs:** tilt controls ordinary transport; shake/tap/motion increase shared mobility; slider inserts one sodium-like top drop near selected X; combo inserts one bounded reactant/water pair.
+- tilt controls ordinary transport;
+- shake/tap/motion increase bounded shared mobility;
+- slider spawns **water** near the touched X after physics;
+- combo inserts one bounded sodium-like/water contact pair.
 
-The issue-#35 topology change increments the scene schema from 2 to **3**. This remains simulation-only content and contains no real reactive-metal procedure.
+This remains stylized simulation content and contains no real reactive-metal procedure.
 
-## Scene 3 — Oil + Fire — schema 3
+## Scene 3 — Oil + Fire — schema 4
 
-**Visual identity:** broken amber oil ribbons/pockets floating above irregular blue water, with a sparse left-originating orange/yellow flame front and dim smoke after burn-out.
+**Visual identity:** sparse amber fuel pockets, sparse water reference points and a bright local fire front/smoke trail.
 
-**Starting geometry:** water depth varies by column. Oil occupies discontinuous surface and secondary ribbon positions rather than several full-width solid rows; cell mass also varies modestly. A small number of left-side oil cells begin as fire so the front has direction without creating a large initial bright block.
+**Initial state:** approximately 10 oil/fuel cells and 8 water cells. A short vertical fuel mini-column at the left deliberately guarantees a small real shared-propagation opportunity without restoring a broad fuel layer. The initial fire is created from the lower cell in that column; buoyant transport and the normal oil/fire reaction perform propagation.
 
-**Autonomous loop:** shared oil/fire reactions consume finite fuel and generic fire lifetime produces smoke/extinction. During refill phase, new oil is inserted near the current authored water-surface region one cell at a time; re-ignition preferentially starts at the leftmost existing fuel.
+**Autonomous loop:** finite fire consumes fuel and expires to smoke. Sparse refill occurs later in the cycle, followed by bounded re-ignition. The quiet/extinguished interval remains part of the scene arc.
 
-**Inputs:** tilt redistributes fuel through shared transport; shake/motion alter mobility; slider adds one oil top drop near selected X; combo ignites one existing oil cell.
+**Inputs:**
 
-The issue-#35 topology change increments the scene schema from 2 to **3**. This is stylized simulation content, not fuel or ignition guidance.
+- slider ignites the nearest existing oil around the touched X after physics, producing local secondary fire state;
+- combo performs one bounded existing-oil ignition;
+- subsequent propagation and fire lifetime remain entirely in shared dynamics.
 
-## Scene 4 — Moss Garden + Mites — schema 1
+This is stylized simulation content, not real fuel/ignition guidance.
 
-**Visual identity:** wet blue substrate, spreading green moss/plant shoots and 1–3 high-contrast mite markers moving independently above the material field.
+## Scene 4 — Moss Garden + Mites — schema 2
 
-The issue-#35 correction does **not** change Moss Garden model state or scene schema. Its existing ecology remains:
+**Visual identity:** sparse wet pockets, small moss islands/shoots and high-contrast moving mite markers.
 
-- moisture-gated bounded growth energy;
-- lateral wet growth and anti-gravity shoots;
-- two initially active mites in a fixed three-slot array;
-- deterministic food seeking/wandering, feeding, energy gain/loss and starvation;
-- bounded autonomous rain;
-- slider rain, combo mite-wake/seed and strong-motion scatter under event budget.
+**Initial state:**
 
-Large wet/green regions are made less visually monolithic by the shared coverage-aware/structural Beauty projection, not by injecting random holes into the ecology.
+- approximately 8 water cells;
+- approximately 12 moss cells including two shoots;
+- **one** autonomous mite starts active on actual biomass;
+- growth energy starts bounded and deterministic.
 
-## Scene 5 — Tracer / Dissolution Plume — future
+**Autonomous ecology:**
 
-Future tracer work should preserve the same information-density lesson: localized concentration and plume boundaries should remain readable on 8x8 without becoming either one large flat colour or incoherent random speckle.
+- moisture gates growth-energy accumulation;
+- moss may reinforce, spread locally or extend against projected gravity;
+- scene-owned new moss remains capped at 15 cells;
+- one autonomous mite seeks/eats biomass, gains/loses energy and may starve;
+- slow cap-aware rain maintains moisture opportunity.
 
-## Product order
+**Inputs:**
+
+- slider spawns/wakes an inactive **mite** on moss near the touched X after physics;
+- combo seeds a bounded moss cell near moisture;
+- strong motion scatters active mites under event budget.
+
+Mites are explicit bounded model agents rather than fake material cells. Up to three fixed mite slots exist, but only one starts active; additional agents are now an explicit user action rather than resting-screen clutter.
+
+## Direct touch philosophy
+
+The coarse pinch-slider is no longer a quasi-parameter control. Across the catalogue it means approximately:
+
+> introduce the scene's secondary interactive material/actor where I am touching.
+
+Mappings are deliberately scene-specific but spatially consistent:
+
+- Lava → water;
+- Sodium → water;
+- Oil → fire/ignition;
+- Moss → mite.
+
+Direct slider actions run after the shared physics pass and before rendering. The new state therefore appears near the selected X for the rendered frame before the next physics tick can move/react it.
+
+Independent A/B touch zones remain unsupported.
+
+## Scene order
 
 ```text
 Lava + Water -> Sodium-like + Water -> Oil + Fire -> Moss Garden -> Lava + Water
 ```
 
-Cold boot starts at Lava + Water. Short BOOT resets the current scene at the same seed. Long BOOT advances one entry and increments the deterministic seed. Scene selection is not persisted across reboot in v0.
+Cold boot starts at Lava + Water. Short BOOT resets the current scene at the same seed. Long BOOT advances one entry and increments the deterministic seed.
+
+## Luminance identity
+
+All scenes use the shared Beauty contract:
+
+- ordinary/non-energetic material is kept in 0..127, visually centred around the low ~63 region;
+- 128..255 is reserved for sparse pseudo-HDR fire/hot lava/hot steam/reaction/agent accents;
+- every final frame remains behind the centralized aggregate-load limiter.
 
 ## Content quality bar
 
-A scene should pass five tests:
+A product scene is not complete merely because named materials exist. It should satisfy:
 
-1. its overall subject is recognizable on the physical 8x8 matrix without serial output;
-2. material bodies expose enough edges/coverage/texture that large regions do not collapse into featureless blocks;
-3. tilt or motion changes behavior in a causally understandable way;
-4. it has an autonomous arc such as contact/depletion/recovery/growth rather than decorative looping;
-5. the physical perimeter remains content space rather than hidden implementation scaffolding.
+1. no material population grows into a large resting slab under the current product cap;
+2. scene identity remains recognizable from sparse topology and colour/state contrast;
+3. tilt/motion changes behaviour causally;
+4. it has an autonomous arc rather than a prerecorded decorative loop;
+5. direct touch has a visible spatial consequence near the user's touched X;
+6. energetic highlights are sparse and meaningful rather than a general brightness increase;
+7. full perimeter remains content space rather than hidden implementation scaffolding.
 
-Automated tests enforce determinism, bounds, work limits, projection coverage and coarse blockiness constraints. Subjective physical readability remains a board-validation question.
+Automated tests can prove deterministic state, population bounds, replay, code-domain brightness rules and work budgets. Final physical readability and comfort remain board-validation questions.
+
+## Future scenes
+
+Tracer/Dissolution Plume remains the next planned breadth milestone. Future scene authors should start sparse and add activity over time/input rather than treating large pre-filled regions as a readability shortcut.
