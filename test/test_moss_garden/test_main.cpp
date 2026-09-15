@@ -14,6 +14,7 @@ namespace {
 using espsand::render::WorldRenderer;
 using espsand::sim::InputFrame;
 using espsand::sim::MaterialId;
+using espsand::sim::MiteState;
 using espsand::sim::Model;
 using espsand::sim::ModelConfig;
 using espsand::sim::MossGardenScene;
@@ -42,6 +43,10 @@ InputFrame gravity_frame(float x, float y) {
 
 std::uint32_t material_mass(const Model& model, MaterialId material) {
   return model.world().totals().mass[espsand::sim::material_index(material)];
+}
+
+bool mite_moved(const MiteState& before, const MiteState& after) {
+  return before.x != after.x || before.y != after.y;
 }
 
 struct Centroid {
@@ -217,11 +222,8 @@ void test_mite_moves_independently_of_world_cells() {
   }
   const auto after = model.moss_garden_state();
 
-  const bool first_moved = before.mites[0].x != after.mites[0].x ||
-                           before.mites[0].y != after.mites[0].y;
-  const bool second_moved = before.mites[1].x != after.mites[1].x ||
-                            before.mites[1].y != after.mites[1].y;
-  TEST_ASSERT_TRUE(first_moved || second_moved);
+  TEST_ASSERT_TRUE(mite_moved(before.mites[0], after.mites[0]) ||
+                   mite_moved(before.mites[1], after.mites[1]));
 }
 
 void test_mite_overlay_survives_downsampling() {
