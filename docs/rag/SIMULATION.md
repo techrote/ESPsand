@@ -1,198 +1,173 @@
 # ESPsand v0 simulation model
 
-## Internal resolution — ES-004 baseline
+## Internal resolution and world bounds
 
-The deterministic world is **16×16 logical cells** with a fixed capacity of 256 cells in row-major order. ES-005 deterministically aggregates this world to the physical 8×8 LEDs, preserving the intentional four-logical-samples-per-LED supersampling baseline.
+The deterministic world is **16x16 logical cells** (256 fixed row-major cells). ES-005 maps each logical 2x2 block to one 8x8 physical LED.
 
-A future resolution change is a model-semantic change and must preserve bounded storage, deterministic host tests and an acceptable firmware frame budget.
+World access remains bounds checked. A transport attempt outside 0..15 is rejected, so physical containment is inherent in the finite array. ES-009 therefore removes the redundant explicit wall ring from all product-scene initializers. Non-product fixtures retain their authored walls because those layouts are regression substrates.
+
+This means product edge cells are ordinary simulation space; wall material is not required to define the board edge.
 
 ## Cell/state model
 
-The common `Cell` remains an 8-byte trivially copyable value:
+The common `Cell` remains the 8-byte ES-004 value:
 
 ```text
-MaterialId material    // uint8 stable registry ID
-uint8      mass        // fill/mass proxy
-int8       motion_x    // compact signed recent-motion proxy
+MaterialId material
+uint8      mass
+int8       motion_x
 int8       motion_y
-int16      temperature // bounded temperature/energy proxy in model-defined units
-uint8      aux         // material-specific compact state
+int16      temperature
+uint8      aux
 uint8      flags
 ```
 
-ES-006 activates motion/temperature without changing the layout. Successful transport records bounded signed recent motion that decays toward zero. Temperature participates in pairwise exchange and ambient loss. `aux` remains compact material-specific state; ES-006 uses it for finite fire lifetime.
+World iteration/hash order is deterministic. Material accounting still reports counts, masses, occupancy and invalid-state diagnostics.
 
-World access is bounds-checked through `try_cell` / `set_cell`; iteration and hashing use deterministic row-major order. Material accounting reports cell counts, per-material mass, occupied cells, total mass and invalid-state diagnostics.
+## Material registry and shared dynamics
 
-## Material registry and shared dynamics metadata
+Stable material IDs remain empty, wall, crust, water, oil, lava, steam, smoke, fire, sodium-like, tracer and moss.
 
-Material IDs remain the stable ES-004 set: empty, wall, crust, water, oil, lava, steam, smoke, fire, sodium-like, tracer and moss.
+`kMaterialDynamics` remains the one source of transport kind, stylized density, gravity/lateral mobility, thermal conductivity, ambient loss and blocking semantics. Key identities remain water density 120/high mobility, oil density 80, lava density 150/slow, sodium-like density 180, buoyant steam/smoke/fire, and static blocking crust/wall.
 
-`kMaterialDynamics` remains the single shared source of transport kind, stylized density rank, gravity/lateral mobility, thermal conductivity, ambient loss and blocking semantics. Scene code must not introduce a second density/viscosity table.
+These are game-model parameters, not physical measurements.
 
-Important shared choices remain:
+## Determinism and model lifecycle
 
-- water: gravity material, density 120, high gravity/lateral mobility;
-- oil: gravity material, density 80, somewhat less mobile than water;
-- lava: gravity material, density 150, deliberately viscous/slow;
-- sodium-like: gravity-driven particle material, density 180;
-- steam/smoke/fire: low-density buoyant materials;
-- crust/wall: blocking static materials.
+`Model` owns PCG32 state, scene, tick, event/reaction budgets and all future-affecting scene state. Hardware timing, wall-clock jitter and unrecorded sensor noise are not model state.
 
-These are stylized tiny-grid parameters, not physical densities, viscosities or temperatures.
+Available scene IDs now include:
 
-## PRNG and deterministic state
+- `kDeterminismFixture`
+- `kDynamicsFixture`
+- `kLavaWater`
+- `kSodiumWater`
+- `kOilFire`
+- `kMossGarden`
 
-`Model` owns explicit PCG32 state. No core material/scene rule may draw from hidden/global entropy, `rand()`, timestamps or hardware noise. The same seed, initial/reset state and normalized per-tick input sequence must produce the same state trace.
+The stable product order is Lava -> Sodium -> Oil -> Moss -> Lava. Older scene IDs are not renumbered.
 
-ES-006 transport uses a deterministic tick/cell phase schedule rather than consuming PRNG draws for ordinary mobility. Product scenes use the model-owned PCG32 only for explicit scene placement/injection/selection rules, so all stochastic-looking scene behavior remains replayable.
+## Work bounds
 
-## Fixed-step model and lifecycle
+`WorkBudget` still caps explicit scene events and reaction work per tick. Shared transport/heat/fire passes are fixed scans of the 256-cell world. Scene injections are bounded single attempts and never create queues.
 
-`ModelConfig` contains seed, scene ID and per-tick event/reaction budget limits. `Model` provides `init`, `reset`, `reseed`, `step`, state inspection, invariant checks and `state_hash`.
+Moss Garden adds no dynamic container or unbounded search structure. It owns a fixed three-slot mite array, performs fixed-capacity scans, caps successful growth actions per growth pass, and uses the existing event budget for user-triggered rain/seed/scatter events.
 
-Hardware/runtime code schedules ticks and constructs normalized `InputFrame` values before crossing the pure-model boundary. Sensor polling cadence and wall-clock jitter are not simulation semantics.
+## Hash/schema boundaries
 
-Available model scenes are now:
+State hashing remains versioned FNV-1a 64 over explicit canonical fields and is a replay/regression identity, not cryptographic integrity.
 
-- `kDeterminismFixture` — original ES-004 PRNG/input/hash fixture;
-- `kDynamicsFixture` — ES-006 shared-mechanics substrate fixture;
-- `kLavaWater` — product scene 1, ES-007;
-- `kSodiumWater` — product scene 2, ES-008;
-- `kOilFire` — product scene 3, ES-008.
+The original ES-004 exact golden trace remains unchanged.
 
-The two fixtures remain non-product test substrates. The stable product order is encoded centrally as Lava + Water -> Sodium-like + Water -> Oil + Fire -> Lava + Water.
+Dynamic/product scenes include the shared dynamics schema plus their own scene schema. ES-009 intentionally increments the first three product scene schema versions because their deterministic initial compositions changed:
 
-## Bounded per-tick work
+- Lava + Water: schema 2
+- Sodium-like + Water: schema 2
+- Oil + Fire: schema 2
+- Moss Garden: schema 1
 
-`WorkBudget` supplies fixed-width event/reaction counters with atomic all-or-nothing consumption and saturating dropped-work counters. The model resets both every tick.
+For Moss Garden, model hashing additionally includes growth energy, active mite count, and each fixed mite slot's x/y/energy/active state. These values are hashed because they change future ecology. Render-history persistence is deliberately excluded because it cannot affect future model state.
 
-ES-006 reaction candidates consume reaction budget before product commit and never recurse. Optional local reaction impulse consumes event budget. Transport/heat/lifecycle passes remain fixed scans of the 256-cell world.
+## Shared transport, heat and reactions
 
-Product-scene touch actions also consume event budget. Autonomous injections are single bounded attempts at their scheduled ticks and never create queues/backlogs. Shared reactions remain the only reaction executor.
+`DynamicsEngine` is unchanged as the common material solver:
 
-## State hashing and schema boundaries
+- gravity-directed whole-cell transport;
+- density swaps and lateral relaxation;
+- buoyant gas/fire motion;
+- bounded motion disturbance;
+- pairwise integer heat exchange plus ambient loss;
+- centralized lava+water, sodium-like+water and oil+fire reactions;
+- bounded reaction impulse;
+- finite fire -> smoke lifetime.
 
-State hashing uses versioned FNV-1a 64 over canonical explicit little-endian fields, not raw object memory. It is a replay/regression identity, not cryptographic integrity.
+Whole-cell transport and shared reactions preserve participating mass. Explicit scene replenishment/growth is documented scene-owned state creation.
 
-The original ES-004 exact golden trace remains unchanged:
+## ES-009 re-composition of chemistry scenes
 
-```text
-initial      0x4943A6C732CA020D
-after tick 1 0x75A4B3C9249EF546
-after tick 2 0xFC14CC3D7A9C7408
-after tick 3 0xB411D621F3D3F1C6
-after tick 4 0x8F0F30D22E87FB14
-```
+The shared physics has not been replaced; only deterministic starting/source geometry changed for physical readability.
 
-`kDynamicsFixture` adds `kDynamicsSchemaVersion`. Each product scene includes that shared dynamics discriminator plus its own scene schema version. ES-008 adds `kSodiumWaterSceneSchemaVersion` and `kOilFireSceneSchemaVersion` without renumbering earlier scene IDs. Per-tick scene action stats are included only for the active scene.
+### Lava + Water
 
-## Transport — ES-006 baseline
+Water now forms a coherent full-width lower basin. Lava starts as a central four-cell-wide source with an early central contact path. Autonomous lava arrives through central vent positions; water refill targets the lower basin. This removes perimeter walls and makes the causal path "hot source falls into blue basin -> crust/steam" larger on the 8x8 display.
 
-`DynamicsEngine` performs one deterministic bounded transport pass per model tick.
+### Sodium-like + Water
 
-- normalized gravity selects a deterministic cardinal movement axis; diagonal input becomes a deterministic X/Y duty sequence;
-- gravity materials move with gravity; steam/smoke/fire move opposite gravity;
-- dynamic cells move into empty space or density-swap with non-blocking materials when ordering permits;
-- liquids/gases may attempt perpendicular relaxation when primary movement is blocked;
-- signed spin biases lateral side choice;
-- shake/motion/tap/absolute spin provide bounded mobility disturbance but do not replace gravity;
-- each cell participates in at most one transport exchange in the pass.
+Water forms a full-width lower pool. Sodium-like reactant uses paired logical cells for several initial/autonomous drops so it survives 2x2 downsampling as a recognizable feature. Contact/reaction/fire/steam/impulse remain shared dynamics.
 
-Whole-cell moves/swaps conserve tracked material mass exactly. Scene injection intentionally adds mass; reaction rules transform identity while preserving participating cell masses.
+### Oil + Fire
 
-## Heat — ES-006 baseline
+Oil forms a broad full-width layer above a thinner water layer. Initial fire starts from the left edge so propagation can read as a directional front. Fuel depletion, extinction, refill and re-ignition keep the existing finite cycle semantics.
 
-Each horizontal/vertical pair is visited once, with bounded integer exchange proportional to the lower material conductivity. Equal/opposite deltas accumulate in a fixed 256-element array before application; then material-specific ambient loss moves temperatures toward zero. Final values clamp to `int16_t`.
+All three product scenes now contain zero wall mass unless wall is intentionally added as future content.
 
-Units are game/simulation units chosen for bounded convergence and useful visible gradients, not physical temperature calibration.
+## Moss Garden — ES-009
 
-## Reactions and finite fire — shared baseline
-
-The centralized shared reaction table remains:
-
-| Contact | Products | Baseline effect |
-| --- | --- | --- |
-| lava + water | crust + steam | heated persistent solid + hot buoyant gas |
-| sodium_like + water | fire + steam | finite hot fire + hot gas |
-| oil + fire | fire + fire | fuel cell becomes finite hot fire |
-
-Each cell may participate in at most one adjacency reaction in a tick. Traversal is deterministic, every accepted candidate consumes reaction budget, and there is no recursive chain executor.
-
-Fire is a shared finite material state. `aux` carries remaining lifetime; expired fire becomes smoke at reduced temperature while preserving mass. ES-008 relies on this generic lifecycle rather than implementing scene-local flame timers.
-
-## Lava + Water — ES-007 product scene
-
-`LavaWaterScene` is scene policy around the shared ES-006 engine. It initializes a substantial water reservoir, hot lava body and seeded near-contact cell, then periodically attempts bounded lava/water replenishment. Strong disturbance may relocate only a tiny capped number of existing crust cells, preserving mass while reopening contact surfaces. Slider/combo provide optional bounded injection under the accepted touch truth.
-
-All flow, heat, gas and lava-water transformation still come from the shared dynamics engine.
-
-## Sodium-like + Water — ES-008 product scene
-
-`SodiumWaterScene` deliberately avoids scripted skitter/fizz animation.
-
-### Initial/autonomous state
-
-- border walls bound the world;
-- water fills the lower six interior rows;
-- a small finite set of sodium-like particles begins above/near the water, including one seeded near-contact placement;
-- one sodium-like top injection is attempted every 180 ticks;
-- one water refill attempt occurs every 300 ticks.
-
-### Reaction behavior
-
-When sodium-like contacts water, the centralized ES-006 rule produces finite fire plus steam. The ordinary reaction impulse writes bounded motion proxies to the product cells, so energetic local movement is a shared reaction consequence rather than arbitrary scene animation. Fire then expires through the generic fire-to-smoke lifecycle.
-
-### Optional touch
-
-- slider adds one sodium-like cell near the selected X, at the shared capped touch cadence;
-- combo inserts one adjacent sodium-like/water pair into available space;
-- both actions consume event budget;
-- independent A/B zones remain disabled.
-
-The scene remains complete through autonomous behavior + IMU alone.
-
-## Oil + Fire — ES-008 product scene
-
-`OilFireScene` proves finite fuel propagation/extinction using only shared material/reaction behavior.
+Moss Garden adds bounded ecology around the shared water solver.
 
 ### Initial state
 
-- a lower water layer provides a density reference;
-- an amber oil pool begins above it, using the shared oil density/mobility metadata;
-- one seeded fire cell starts inside the fuel.
+- water occupies the lower three full-width logical rows;
+- moss begins as two substantial wet patches plus two higher-energy shoot cells;
+- two mite agents are active in a fixed three-slot array;
+- initial growth energy is bounded and deterministic from reset state.
 
-### Autonomous burn cycle
+### Moisture and growth
 
-The first part of each 480-tick cycle intentionally contains no fuel injection, allowing fuel to be consumed and finite fire to gutter out. From phase 240 to before phase 300, sparse oil refill attempts occur every 12 ticks. At phase 300, one existing oil cell is re-ignited if available. The common oil/fire rule then handles subsequent propagation; generic fire lifetime handles extinction/smoke.
+A moss cell is considered locally wet when shared water exists within a small Manhattan neighborhood. At fixed charge intervals, wet moss contributes to a bounded growth-energy reservoir (maximum 512).
 
-This creates a stateful build/burn/extinguish/refill/reignite arc without a permanent decorative flame.
+At fixed growth intervals, at most three successful growth actions occur:
 
-### Optional touch
+1. a sufficiently mature/wet moss cell may grow a shoot into empty space **against projected gravity**;
+2. otherwise growth may spread into the best neighboring empty cell with moisture support;
+3. otherwise a wet existing moss cell may consume growth energy to increase biomass/aux state.
 
-- slider adds one oil cell near the selected X;
-- combo ignites one existing oil cell;
-- propagation after ignition still belongs to `DynamicsEngine`;
-- independent A/B zones remain disabled.
+No moisture means no growth/reinforcement. Water itself still moves only through shared `DynamicsEngine`, so tilt changes later moisture opportunity rather than directly setting plant positions.
 
-## Deterministic scene evidence — ES-008
+### Mites
 
-ES-008 tests require:
+Each mite has only `x`, `y`, `energy`, and `active` state.
 
-- stable three-scene catalogue order and names;
-- deterministic strong Sodium-like + Water initialization;
-- finite sodium consumption, shared reaction products and bounded reaction impulse;
-- bounded slider/combo actions;
-- deterministic Oil + Fire initialization with oil above water;
-- fuel consumption, finite fire expiry, smoke and a pre-refill extinction interval;
-- fixed-seed duplicate-model traces for both new scenes;
-- distinct initial renderer frames across all three product scenes;
-- 1,000 randomized duplicate-model ticks for each new scene with state-hash equality, valid materials and bounded work.
+- active mites lose energy over time;
+- they seek nearest moss deterministically, with model-PRNG fallback wandering;
+- they refuse steps into water/lava/oil/fire;
+- standing on moss at feed cadence reduces moss mass/aux and increases mite energy;
+- depleted moss may disappear to empty;
+- energy reaching zero deactivates the mite;
+- active count is recomputed from the fixed array and checked by model invariants.
+
+Mites are not material cells. They can therefore feed on/stand over biomass without replacing the underlying world cell.
+
+### Autonomous and external events
+
+- bounded autonomous rain occurs periodically;
+- slider touch can inject a small rain pulse near selected X;
+- combo first tries to activate/place an inactive mite on moss, otherwise seeds one moss cell near water;
+- sufficiently strong motion consumes event budget and performs a bounded scatter attempt for active mites.
+
+## Presentation state is not simulation state
+
+ES-009 temporal persistence is a deterministic RGB-frame blend in runtime/render presentation. It is reset on scene reset/change and does not feed into `World`, scene state, PRNG or hashes. The same model trace is therefore independent of display persistence settings.
+
+## Automated ES-009 evidence
+
+The new host suite proves:
+
+- all product scenes initialize with zero wall material;
+- deterministic Moss Garden initialization with water/moss/two active mites;
+- no growth when all moisture is removed;
+- bounded growth in a wet habitat;
+- feeding reduces biomass and increases mite energy;
+- mites starve/deactivate without biomass while invariants remain valid;
+- a 500-tick same-seed/input duplicate trace keeps identical hashes;
+- opposite gravity directions produce different future moss ecology;
+- mite coordinates move independently of world cells;
+- mite overlay survives 16x16 -> 8x8 projection;
+- temporal persistence is deterministic/bounded;
+- rain/scatter inputs stay within event budget.
+
+Existing Lava, Sodium, Oil, renderer and shared-dynamics suites continue to pass after the re-composition.
 
 ## Safety semantics
 
-Sodium-like and Oil + Fire are stylized visual/game simulations only. Do not encode real reactive-metal, fuel, ignition, quantity or experimental handling guidance.
-
-## Tracer and biology — later milestones
-
-Tracer remains static in ES-006 bulk transport until the tracer/plume milestone adds concentration behavior. Moss/plant and mite-like ecology remains the next hero milestone and must remain bounded/deterministic.
+Sodium-like and Oil + Fire remain stylized simulation content only. No real reactive-material, fuel, ignition or handling instructions belong in these scene contracts.
