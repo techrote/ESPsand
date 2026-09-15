@@ -1,8 +1,10 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 
 #include <espsand/sim/dynamics.hpp>
+#include <espsand/sim/energetic_scenes.hpp>
 #include <espsand/sim/input_frame.hpp>
 #include <espsand/sim/lava_water_scene.hpp>
 #include <espsand/sim/prng.hpp>
@@ -17,7 +19,54 @@ enum class SceneId : std::uint8_t {
   kDeterminismFixture = 0,
   kDynamicsFixture = 1,
   kLavaWater = 2,
+  kSodiumWater = 3,
+  kOilFire = 4,
 };
+
+inline constexpr std::array<SceneId, 3> kProductSceneOrder{{
+    SceneId::kLavaWater,
+    SceneId::kSodiumWater,
+    SceneId::kOilFire,
+}};
+
+constexpr bool is_product_scene(SceneId scene) noexcept {
+  return scene == SceneId::kLavaWater || scene == SceneId::kSodiumWater ||
+         scene == SceneId::kOilFire;
+}
+
+constexpr bool uses_shared_dynamics(SceneId scene) noexcept {
+  return scene == SceneId::kDynamicsFixture || is_product_scene(scene);
+}
+
+constexpr const char* scene_name(SceneId scene) noexcept {
+  switch (scene) {
+  case SceneId::kDeterminismFixture:
+    return "determinism_fixture";
+  case SceneId::kDynamicsFixture:
+    return "dynamics_fixture";
+  case SceneId::kLavaWater:
+    return "lava_water";
+  case SceneId::kSodiumWater:
+    return "sodium_water";
+  case SceneId::kOilFire:
+    return "oil_fire";
+  }
+  return "invalid";
+}
+
+constexpr SceneId next_product_scene(SceneId scene) noexcept {
+  switch (scene) {
+  case SceneId::kLavaWater:
+    return SceneId::kSodiumWater;
+  case SceneId::kSodiumWater:
+    return SceneId::kOilFire;
+  case SceneId::kOilFire:
+  case SceneId::kDeterminismFixture:
+  case SceneId::kDynamicsFixture:
+    return SceneId::kLavaWater;
+  }
+  return SceneId::kLavaWater;
+}
 
 struct ModelConfig {
   std::uint64_t seed = 1;
@@ -74,6 +123,8 @@ public:
   FixtureStateSnapshot fixture_state() const noexcept;
   DynamicsStats dynamics_stats() const noexcept;
   LavaWaterSceneStats lava_water_stats() const noexcept;
+  SodiumWaterSceneStats sodium_water_stats() const noexcept;
+  OilFireSceneStats oil_fire_stats() const noexcept;
 
   bool invariants_hold() const noexcept;
   std::uint64_t state_hash() const noexcept;
@@ -93,10 +144,14 @@ private:
   WorkBudget reaction_budget_{};
   DynamicsEngine dynamics_engine_{};
   LavaWaterScene lava_water_scene_{};
+  SodiumWaterScene sodium_water_scene_{};
+  OilFireScene oil_fire_scene_{};
 
   FixtureStateSnapshot fixture_{};
   DynamicsStats dynamics_stats_{};
   LavaWaterSceneStats lava_water_stats_{};
+  SodiumWaterSceneStats sodium_water_stats_{};
+  OilFireSceneStats oil_fire_stats_{};
 };
 
 } // namespace espsand::sim
