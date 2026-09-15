@@ -6,47 +6,73 @@ Automate everything that does not genuinely require the physical board. Never fa
 
 ## Required CI layers
 
+The repository's `python tools/ci.py` is the reproducible verification entry point used by GitHub Actions.
+
 ### 1. Host-native deterministic tests
 
-Compile the pure core on the CI host and test:
+The pinned native PlatformIO environment compiles pure core code with C++17 plus `-Wall -Wextra -Wpedantic -Werror` and runs Unity tests.
 
-- world initialization;
-- fixed-seed determinism;
-- button/input state machines where hardware-independent;
-- gravity-coordinate transforms;
-- transport conservation fixtures;
-- density/buoyancy tendencies;
-- heat diffusion bounds;
-- reaction products and budgets;
-- biology/agent boundedness;
-- renderer aggregation and brightness limiter;
-- randomized stress/fuzz-like tick sequences for bounds/invariant failures.
+The current suite covers foundation/board/input logic plus the ES-004 deterministic substrate. ES-004 specifically verifies:
+
+- the fixed 16×16/256-cell world, row-major access and boundary rejection;
+- centralized stable material IDs and material/mass accounting;
+- exact PCG32 fixture output;
+- same-seed/same-input replay identity;
+- different-seed controlled stochastic divergence;
+- reset and reseed semantics;
+- event/reaction work-budget saturation;
+- external touch/noise input separation from PRNG state;
+- input sanitization for out-of-range, NaN and infinite values;
+- a versioned golden multi-tick state trace;
+- 5,000 randomized ticks on duplicate models while checking invariants, accounting, bounded work and randomized out-of-bounds probes.
+
+Later milestones add transport conservation, density/buoyancy, heat, reactions, biology and renderer tests when those systems actually exist. Do not add placeholder assertions that imply unimplemented physics is validated.
 
 ### 2. Firmware compile
 
-CI must compile the target ESP32-S3 firmware with the repository's pinned toolchain/dependencies. Once the exact board profile is known, CI should use it or a documented equivalent.
+CI compiles both:
 
-Warnings introduced by project code should be treated seriously; foundation work may choose the exact policy.
+- the normal `esp32s3` firmware target;
+- the `esp32s3_bringup` minimal target.
+
+Both use the repository's pinned Espressif32/Arduino configuration and compile the shared core library. Project warnings are treated seriously; host-native core warnings are errors.
 
 ### 3. Formatting/static checks
 
-Use deterministic formatter/linter checks appropriate to the selected C++/PlatformIO stack. Avoid a huge quality-tool suite whose maintenance cost exceeds this project's size.
+`tools/format.py --check` applies the repository `.clang-format` contract to C/C++ sources. Keep the quality-tool surface deliberately small and reproducible.
 
-## Deterministic traces
+## Deterministic traces — ES-004 contract
 
-For important model milestones, keep small fixtures such as:
+Important model milestones keep compact fixtures containing seed/configuration, deterministic input frames, expected hashes and selected counters.
+
+`test/test_simulation_core/test_main.cpp` locks two foundational sequences:
+
+1. PCG32 seed 42, default stream, first six outputs:
 
 ```text
-seed
-initial world
-N input frames
-expected final state hash
-selected intermediate counters
+2707161783
+2068313097
+3122475824
+2211639955
+3215226955
+3421331566
 ```
 
-These catch accidental behavioural drift while remaining cheaper than image/video golden tests.
+2. Model seed `0x0123456789ABCDEF`, event budget 2, reaction budget 3:
 
-When intentionally changing model semantics, update fixtures in the same PR with an explanation.
+```text
+initial      0x4943A6C732CA020D
+after tick 1 0x75A4B3C9249EF546
+after tick 2 0xFC14CC3D7A9C7408
+after tick 3 0xB411D621F3D3F1C6
+after tick 4 0x8F0F30D22E87FB14
+```
+
+The final tick also locks event-budget saturation at `used=2`, `dropped=1`.
+
+`Model::state_hash()` is a versioned FNV-1a 64 regression/replay identity over canonical explicit fields, including PRNG state and the row-major world. It is deliberately **not cryptographic** and must not be used as an integrity/authentication mechanism.
+
+An intentional model-semantic change may alter these fixtures. Update the fixture and explanatory documentation in the same PR; an unexplained hash drift is a regression.
 
 ## Hardware validation gates
 
@@ -62,7 +88,7 @@ Examples:
 - real frame rate and loop timing;
 - 30–60 minute or longer soak without resets.
 
-A remote agent may complete code and CI but must not claim one of these passed without user-provided or machine-collected board evidence.
+A remote agent may complete code and CI but must not claim one of these passed without user-provided or machine-collected board evidence. ES-004 itself changes only pure model contracts and does not introduce a new physical-board acceptance gate.
 
 ## Serial evidence
 
@@ -75,7 +101,7 @@ touch ch=... raw=... base=... z=...
 scene=lava_water seed=...
 ```
 
-Exact schema may differ.
+Exact schema may differ. Model seed/hash/budget diagnostics should be added when the runtime begins executing product simulation scenes.
 
 ## PR checklist
 
@@ -88,7 +114,7 @@ Every implementation PR should state:
 - firmware build result;
 - automated CI result;
 - required hardware validation still outstanding;
-- docs updated for any resolved hardware assumption.
+- docs updated for any resolved assumption or model contract.
 
 ## Merge rule
 

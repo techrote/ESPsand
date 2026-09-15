@@ -1,12 +1,12 @@
 # ESPsand v0 implementation roadmap
 
-This roadmap is the reviewed execution sequence. GitHub issues should map directly onto these milestones and should normally be completed serially.
+This roadmap is the reviewed execution sequence. GitHub issues map directly onto these milestones and should normally be completed serially.
 
 ## Milestone A — Foundation and hardware truth
 
 ### A1. Repository/toolchain/CI + board profile
 
-Establish PlatformIO (or justified equivalent), host-native tests, firmware build CI, formatting, and a documented board profile/characterization harness. Unknown physical values remain explicitly marked until measured.
+Establish PlatformIO, host-native tests, firmware build CI, formatting, and a documented board profile/characterization harness. Unknown physical values remain explicitly marked until measured.
 
 ### A2. Board I/O runtime
 
@@ -14,13 +14,17 @@ Implement matrix output, QMI8658C raw IMU driver/adapter, BOOT short/long state 
 
 ### A3. No-component capacitive feasibility
 
-Enumerate safe candidate touch GPIOs from the validated board profile, implement diagnostic sampling/baselines/common-mode normalization, and determine whether one or two useful broad zones exist. Failure is an acceptable outcome; runtime must degrade gracefully.
+Enumerate safe candidate touch GPIOs from the validated board profile, implement diagnostic sampling/baselines/common-mode normalization, characterize the bare-board signal and expose only physically supported bounded semantics with graceful fallback.
+
+ES-003/003A established broad `cap_combo`, a pinch-gated coarse slider and an explicit bounded external noise impulse; reliable independent A/B buttons were not supported on the tested bare board.
 
 ## Milestone B — Deterministic micro-world
 
-### B1. World/material kernel
+### B1. World/material kernel — ES-004 baseline
 
-Create the host-testable deterministic world, seeded PRNG, cell/material registry, fixed-step input structure and state hashing/fixtures.
+ES-004 establishes the host-testable 16×16 deterministic world, compact cell/material registry, model-owned seeded PCG32, fixed-step normalized `InputFrame`, explicit lifecycle seam, bounded event/reaction work counters, stable state hashing and golden replay fixtures.
+
+Subsequent B milestones build on these contracts rather than replacing deterministic state ownership. Intentional model-semantic changes must update the corresponding fixture/schema deliberately.
 
 ### B2. Renderer and power-aware output
 
@@ -28,13 +32,13 @@ Implement supersampled logical-world to 8×8 aggregation, important-minority/emi
 
 ### B3. Transport, heat, gas and reaction engine
 
-Add gravity-directed transport, density/buoyancy tendency, liquid viscosity differences, bounded momentum proxy if beneficial, gas movement, heat exchange and centralized bounded reactions. Integrate normalized IMU gravity and motion-energy inputs.
+Add gravity-directed transport, density/buoyancy tendency, liquid viscosity differences, bounded momentum proxy if beneficial, gas movement, heat exchange and centralized bounded reactions. Integrate normalized IMU gravity and motion-energy inputs through the ES-004 `InputFrame` contract.
 
 ## Milestone C — Hero vertical slices
 
 ### C1. Lava + Water
 
-First complete scene proving the stack: liquid contact, cooling/crust, steam/gas, heat glow, tilt, shake/tap and optional cap-zone injection.
+First complete scene proving the stack: liquid contact, cooling/crust, steam/gas, heat glow, tilt, shake/tap and optional capacitive injection.
 
 ### C2. Sodium-like + Water and Oil + Fire
 
@@ -60,7 +64,7 @@ Tune scene order, defaults, transitions, button semantics, motion thresholds, op
 A1
  ↓
 A2
- ├────→ A3 (optional capability; may finish with "not viable")
+ ├────→ A3
  ↓
 B1
  ↓
@@ -87,7 +91,7 @@ Every milestone preserves:
 
 - single-board v0 scope;
 - no mandatory network/cloud/app runtime;
-- deterministic fixed-seed core;
+- deterministic fixed-seed core with explicit model-owned randomness;
 - host tests for pure logic;
 - centralized LED output budget;
 - hardware abstraction seams;
