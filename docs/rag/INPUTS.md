@@ -6,17 +6,21 @@ ESPsand has almost no conventional UI. Physical handling is the UI. Hardware con
 
 Once normalized into an `InputFrame`, a recorded input sequence is ordinary deterministic simulation data. Raw sensor axes, hardware polling jitter and touch-electrical irregularity are not model entropy.
 
-## BOOT button
+## BOOT button — ES-008 product lifecycle
 
-Product semantics remain:
+Product semantics are now concrete across three scenes:
 
-- short press: reset/reseed the current scene according to runtime scene policy;
-- long press: advance to the next scene;
+- short press: reset the current scene exactly at its current configured seed;
+- long press: advance one entry in the stable product catalogue;
 - ambiguous duration between thresholds: do not trigger both.
 
-The simulation-side `BootEvent` remains available in `InputFrame`, but generic `Model::step()` does not silently perform lifecycle transitions. `SceneRuntime` owns product lifecycle calls.
+The current order is:
 
-ES-007 has one product scene, so short BOOT restores the exact configured Lava + Water seed/initial state. Long BOOT currently performs a one-scene wrap by reseeding Lava + Water with seed+1 and logs that fact. Once ES-008 adds Scene 2, long BOOT should become real scene advance rather than preserving this temporary wrap behavior.
+```text
+Lava + Water -> Sodium-like + Water -> Oil + Fire -> Lava + Water
+```
+
+Long BOOT increments the deterministic seed before initializing the next scene. The simulation-side `BootEvent` remains available in `InputFrame`, but generic `Model::step()` does not silently perform lifecycle transitions; `SceneRuntime` owns product lifecycle calls.
 
 ## Gravity and motion — ES-007 concrete conditioner
 
@@ -34,9 +38,9 @@ For each valid sample it:
 - emits a bounded `tap_impulse` for sufficiently strong residual acceleration, with a 160 ms cooldown;
 - emits signed normalized `spin_rate` from gyro Z.
 
-A missing/invalid sample decays transient motion fields rather than replacing the stored gravity direction with garbage. Before the first valid IMU sample, `SceneRuntime` supplies deterministic downward gravity so Lava + Water remains autonomous and visible.
+A missing/invalid sample decays transient motion fields rather than replacing the stored gravity direction with garbage. Before the first valid IMU sample, `SceneRuntime` supplies deterministic downward gravity so autonomous scenes remain visible.
 
-The important contract is separation: a shake may increase transport disturbance and scene fracture response, but it does not become a new low-frequency gravity direction. Host tests explicitly cover this.
+The important contract is separation: a shake may increase transport disturbance and scene response, but it does not become a new low-frequency gravity direction. Host tests explicitly cover this.
 
 ## `InputFrame` contract
 
@@ -53,10 +57,7 @@ Continuous scalar fields are sanitized at the model boundary. Gravity/spin clamp
 
 ES-006 gives the motion fields shared transport meaning: gravity chooses transport direction while shake/motion/tap/absolute spin provide a bounded mobility boost and signed spin biases lateral relaxation.
 
-ES-007 layers only scene-specific, bounded interpretation on top:
-
-- sufficiently strong shake/tap/motion/noise may relocate a small capped number of existing crust cells, preserving their mass and reopening contact surfaces;
-- this is scene policy around the shared dynamics engine, not a second transport solver.
+ES-007 adds one scene-specific motion rule: sufficiently strong disturbance may relocate a small capped number of existing crust cells in Lava + Water, preserving their mass and reopening contact surfaces. ES-008 does not add another transport solver: Sodium-like + Water and Oil + Fire use the common disturbance/mobility behavior directly.
 
 ## Capacitive edge input — tested board truth
 
@@ -71,17 +72,31 @@ ES-003/003A physically tested GPIO1..GPIO7 on the Waveshare ESP32-S3-Matrix. The
 - `slider_strength` is bounded broad-contact strength;
 - a strong isolated local excursion may produce explicit bounded `noise_impulse` / `noise_event`.
 
-Independent A/B touch buttons were not physically supported by the bare board and must not be silently reintroduced by scene documentation or code.
+Independent A/B touch buttons were not physically supported by the bare board and are not exposed by any current product scene.
 
-### ES-007 Lava + Water mapping
+### Product scene mappings
 
-When optional touch is available:
+All optional direct-control injection is capped to no more than once per 12 model ticks and participates in the event budget.
 
-- active slider with strength >=0.35 can inject one lava cell near the selected horizontal position, at a maximum cadence of once per 12 model ticks and subject to event budget;
-- a combo edge event requests one adjacent lava/water contact pair in available interior space; the ordinary ES-006 reaction engine then performs crust/steam conversion under the reaction budget;
-- explicit noise contributes only to the same bounded disturbance interpretation used for remixing; it is not PRNG seed material.
+**Lava + Water**
 
-The scene remains fully playable/observable without touch because autonomous material replenishment plus BOOT + IMU are sufficient.
+- slider: inject one lava cell near the selected X;
+- combo: insert one adjacent lava/water contact pair; the shared reaction engine performs crust/steam conversion;
+- strong disturbance/noise may contribute to the bounded crust-remix rule.
+
+**Sodium-like + Water — ES-008**
+
+- slider: inject one sodium-like cell near the selected X;
+- combo: insert one adjacent sodium-like/water pair; the shared reaction engine produces finite fire/steam and the ordinary bounded reaction impulse;
+- shake/tap/motion use the shared mobility/disturbance path to increase encounters rather than triggering a scene-local reaction cascade.
+
+**Oil + Fire — ES-008**
+
+- slider: inject one oil cell near the selected X;
+- combo: ignite one existing oil cell; subsequent propagation uses the centralized oil/fire reaction and generic finite fire lifecycle;
+- shake/tap/motion use the shared mobility/disturbance path to rearrange fuel/fire/smoke.
+
+All three scenes remain fully demonstrable with BOOT + IMU if touch is unavailable.
 
 ### External noise is not randomness
 
@@ -95,4 +110,4 @@ The separate diagnostic/bring-up code still exposes raw/baseline/noise/local/com
 
 Scenes consume exactly one normalized `InputFrame` per executed model tick. Replay identity is seed/configuration + reset state + tick count + ordered `InputFrame` sequence, not wall-clock timing.
 
-ES-007 runs a scripted 96-tick duplicate-model trace containing four gravity directions plus shake, tap, combo and slider input and requires equal state hashes after every tick. A separate 1,200-tick randomized duplicate run checks the same replay/boundedness property over a larger scene history.
+ES-007 retains its scripted 96-tick Lava + Water duplicate-model trace. ES-008 adds fixed-seed duplicate traces for Sodium-like + Water and Oil + Fire plus randomized 1,000-tick duplicate runs for each new scene, checking state-hash equality, invariant preservation and budget bounds throughout.
