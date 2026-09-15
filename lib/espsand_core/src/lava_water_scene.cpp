@@ -15,9 +15,11 @@ constexpr std::uint8_t kLavaMass = 232;
 constexpr std::uint8_t kWaterMass = 220;
 constexpr std::int16_t kLavaTemperature = 1700;
 constexpr std::int16_t kWaterTemperature = 24;
+// clang-format off
 constexpr std::array<int, kWorldWidth> kWaterSurface{{
     13, 12, 13, 11, 12, 10, 11, 12, 10, 11, 12, 11, 13, 12, 13, 12,
 }};
+// clang-format on
 
 Cell material_cell(MaterialId material, std::uint8_t mass, std::int16_t temperature = 0) noexcept {
   Cell cell{};
@@ -183,21 +185,23 @@ void LavaWaterScene::initialize(World& world, Pcg32& prng) const noexcept {
     }
   }
 
+  // clang-format off
   constexpr std::array<std::array<int, 2>, 12> kLavaStream{{
       {{7, 0}}, {{8, 0}}, {{7, 1}}, {{7, 2}}, {{8, 3}}, {{8, 4}},
       {{7, 5}}, {{8, 6}}, {{7, 7}}, {{8, 8}}, {{7, 9}}, {{8, 9}},
   }};
+  // clang-format on
   for (std::size_t index = 0; index < kLavaStream.size(); ++index) {
     const auto& point = kLavaStream[index];
     const std::uint8_t mass = static_cast<std::uint8_t>(174U + (index % 3U) * 24U);
-    static_cast<void>(world.set_cell(
-        point[0], point[1], material_cell(MaterialId::kLava, mass, kLavaTemperature)));
+    const Cell stream_cell = material_cell(MaterialId::kLava, mass, kLavaTemperature);
+    static_cast<void>(world.set_cell(point[0], point[1], stream_cell));
   }
 
   const std::uint8_t contact_x = static_cast<std::uint8_t>(7U + prng.bounded(2U));
   const int contact_y = kWaterSurface[contact_x] - 1;
-  static_cast<void>(world.set_cell(
-      contact_x, contact_y, material_cell(MaterialId::kLava, kLavaMass, kLavaTemperature)));
+  const Cell contact_cell = material_cell(MaterialId::kLava, kLavaMass, kLavaTemperature);
+  static_cast<void>(world.set_cell(contact_x, contact_y, contact_cell));
 }
 
 LavaWaterSceneStats LavaWaterScene::before_dynamics(LavaWaterTickContext context) const noexcept {
