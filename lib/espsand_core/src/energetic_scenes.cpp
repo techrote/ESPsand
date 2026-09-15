@@ -8,6 +8,8 @@
 namespace espsand::sim {
 namespace {
 
+using TickContext = EnergeticSceneTickContext;
+
 constexpr std::uint64_t kSodiumAutoPeriodTicks = 180;
 constexpr std::uint64_t kSodiumWaterRefillPeriodTicks = 300;
 constexpr std::uint64_t kTouchInjectionPeriodTicks = 12;
@@ -179,8 +181,7 @@ void SodiumWaterScene::initialize(World& world, Pcg32& prng) const noexcept {
   static_cast<void>(world.set_cell(contact_x, 8, sodium));
 }
 
-SodiumWaterSceneStats SodiumWaterScene::before_dynamics(
-    EnergeticSceneTickContext context) const noexcept {
+SodiumWaterSceneStats SodiumWaterScene::before_dynamics(TickContext context) const noexcept {
   SodiumWaterSceneStats stats{};
   const Cell sodium = material_cell(MaterialId::kSodiumLike, kSodiumMass, kSodiumTemperature);
 
@@ -234,11 +235,11 @@ void OilFireScene::initialize(World& world, Pcg32& prng) const noexcept {
   }
 
   const std::uint8_t ignition_x = static_cast<std::uint8_t>(5U + prng.bounded(6U));
-  static_cast<void>(world.set_cell(ignition_x, 9,
-                                   material_cell(MaterialId::kFire, 120, 1300, 14)));
+  const Cell fire = material_cell(MaterialId::kFire, 120, 1300, 14);
+  static_cast<void>(world.set_cell(ignition_x, 9, fire));
 }
 
-OilFireSceneStats OilFireScene::before_dynamics(EnergeticSceneTickContext context) const noexcept {
+OilFireSceneStats OilFireScene::before_dynamics(TickContext context) const noexcept {
   OilFireSceneStats stats{};
   const Cell oil = material_cell(MaterialId::kOil, kOilMass, kOilTemperature);
 
