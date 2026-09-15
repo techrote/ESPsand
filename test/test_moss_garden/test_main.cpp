@@ -46,6 +46,10 @@ std::uint32_t material_mass(const Model& model, MaterialId material) {
   return model.world().totals().mass[espsand::sim::material_index(material)];
 }
 
+std::uint16_t material_cells(const World& world, MaterialId material) {
+  return world.totals().cell_count[espsand::sim::material_index(material)];
+}
+
 bool mite_moved(const MiteState& before, const MiteState& after) {
   return before.x != after.x || before.y != after.y;
 }
@@ -98,9 +102,9 @@ void test_moss_scene_initialization_is_deterministic_sparse_and_alive() {
   TEST_ASSERT_TRUE(first.invariants_hold());
   TEST_ASSERT_TRUE(material_mass(first, MaterialId::kWater) > 0U);
   TEST_ASSERT_TRUE(material_mass(first, MaterialId::kMoss) > 0U);
-  TEST_ASSERT_TRUE(first.world().totals().cell_count[espsand::sim::material_index(MaterialId::kWater)] <=
+  TEST_ASSERT_TRUE(material_cells(first.world(), MaterialId::kWater) <=
                    espsand::sim::kProductMaterialCellLimit);
-  TEST_ASSERT_TRUE(first.world().totals().cell_count[espsand::sim::material_index(MaterialId::kMoss)] <=
+  TEST_ASSERT_TRUE(material_cells(first.world(), MaterialId::kMoss) <=
                    espsand::sim::kProductMaterialCellLimit);
   TEST_ASSERT_EQUAL_UINT8(1U, first.moss_garden_state().mite_count);
 }
@@ -130,7 +134,7 @@ void test_wet_habitat_generates_bounded_growth() {
 
   TEST_ASSERT_TRUE(stats.growth_cells + stats.reinforced_cells > 0U);
   TEST_ASSERT_TRUE(scene.snapshot().growth_energy <= 512U);
-  TEST_ASSERT_TRUE(world.totals().cell_count[espsand::sim::material_index(MaterialId::kMoss)] <=
+  TEST_ASSERT_TRUE(material_cells(world, MaterialId::kMoss) <=
                    espsand::sim::kProductMaterialCellLimit);
 }
 
