@@ -12,40 +12,29 @@ The repository's `python tools/ci.py` is the reproducible verification entry poi
 
 The pinned native PlatformIO environment compiles pure core code with C++17 plus `-Wall -Wextra -Wpedantic -Werror` and runs Unity tests.
 
-The ES-004 deterministic substrate suite verifies:
+The ES-004 deterministic substrate suite verifies the fixed world/material registry, PCG32 sequence, replay/reset semantics, work budgets, input sanitization, golden hashes and randomized invariant stress.
 
-- the fixed 16×16/256-cell world, row-major access and boundary rejection;
-- centralized stable material IDs and material/mass accounting;
-- exact PCG32 fixture output;
-- same-seed/same-input replay identity;
-- different-seed controlled stochastic divergence;
-- reset and reseed semantics;
-- event/reaction work-budget saturation;
-- external touch/noise input separation from PRNG state;
-- input sanitization for out-of-range, NaN and infinite values;
-- a versioned golden multi-tick state trace;
-- 5,000 randomized ticks on duplicate models while checking invariants, accounting, bounded work and randomized out-of-bounds probes.
+ES-005 adds deterministic renderer/output-policy coverage for 2×2 aggregation, important-minority preservation, material/thermal diagnostics, invalid-state fallback, brightness/load limiting and randomized render repeatability.
 
-ES-005 adds renderer/output-policy tests for deterministic 2×2 aggregation, important-minority preservation, palette identity, diagnostic modes, invalid-material fallback, brightness/load limiting and randomized render repeatability.
+ES-006 adds shared-dynamics coverage for mass-conserving transport, rotated gravity, density ordering, gas rise, mobility differences, bounded heat exchange, all three shared reactions, reaction-budget saturation, finite fire lifetime, disturbance/gravity separation and randomized deterministic stress.
 
-ES-006 adds shared-dynamics tests for exact mass conservation, rotated gravity, density ordering, gas rise, mobility differences, thermal convergence, the three shared reaction families, reaction-budget saturation, finite fire lifetime, disturbance/gravity separation, deterministic full-model replay and 2,000 randomized dynamics ticks.
+ES-007 adds 12 Lava + Water / product-input tests covering strong deterministic initialization, autonomous crust/steam evolution, tilt divergence, bounded crust fracture, combo/slider behavior, exact reset, fixed-seed trace replay, renderer identity, motion conditioning and 1,200 randomized scene ticks.
 
-ES-007 adds 12 Lava + Water / product-input tests covering:
+ES-008 adds 13 Sodium-like + Water / Oil + Fire / catalogue tests covering:
 
-- deterministic strong scene initialization with substantial water and lava masses;
-- autonomous contact producing persistent crust and steam while pre-injection total mass remains conserved;
-- materially different flow geometry under different gravity directions;
-- shake-driven bounded crust fracture without mass loss;
-- common-mode combo using the ordinary shared lava-water reaction path;
-- pinch-slider lava injection at a bounded horizontal position;
-- exact fixed-seed reset;
-- a 96-tick fixed-seed duplicate-model state-hash trace containing gravity changes, shake, tap, combo and slider input;
-- renderer distinction between water, hot lava, cooled crust and steam;
-- stable low-pass gravity without false shake under static input;
-- separation of a motion impulse/tap/spin from low-pass gravity;
-- 1,200 randomized scene ticks with duplicate replay, valid material state and bounded work.
+- stable three-scene product order and names;
+- deterministic Sodium-like + Water initialization with finite reactant over a substantial water field;
+- sodium/water contact consuming reactant through the shared reaction, creating gas/fire state and using the common bounded reaction impulse;
+- bounded sodium slider injection and combo contact-pair injection;
+- a fixed-seed 160-tick Sodium-like + Water duplicate-model trace;
+- deterministic Oil + Fire initialization with oil above water and a seeded finite ignition;
+- finite fuel consumption, shared fire expiry, smoke production and complete flame extinction during the pre-refill phase;
+- bounded oil slider injection and combo ignition;
+- a fixed-seed 520-tick Oil + Fire duplicate-model trace spanning refill/re-ignition behavior;
+- distinct deterministic initial 8×8 frames for all three current product scenes;
+- separate 1,000-tick randomized duplicate-model stress runs for Sodium-like + Water and Oil + Fire, requiring equal hashes, valid materials and bounded event/reaction work throughout.
 
-The first full ES-007 integration probe ran **66/66 native tests successfully**. Final merge still requires the same exact-head CI gate after documentation/cleanup changes.
+The first full ES-008 implementation probe passed **79/79 native tests**.
 
 ### 2. Firmware compile
 
@@ -54,17 +43,20 @@ CI compiles both:
 - the normal `esp32s3` product firmware target;
 - the `esp32s3_bringup` minimal hardware-diagnostic target.
 
-ES-007 changes the normal target to boot `SceneRuntime` and Lava + Water. The bring-up target remains available for hardware isolation. Both compile the same shared core, including renderer, output limiter, ES-006 dynamics, ES-007 scene code and the normalized motion interpreter.
+The normal target boots the three-scene `SceneRuntime`; the bring-up target remains available for hardware isolation. Both compile the same shared core including renderer, output limiter, dynamics, Lava + Water, energetic scene policy and motion conditioning.
 
-The first full ES-007 integration probe built both targets successfully. Normal product firmware used approximately 10.6% reported RAM and 34.2% of the configured application flash partition in that CI run; these are compile-time size reports, not runtime performance evidence.
+The full ES-008 implementation probe built both targets successfully:
+
+- normal product firmware: RAM **34,592 / 327,680 bytes (10.6%)**, flash **451,973 / 1,310,720 bytes (34.5%)**;
+- bring-up firmware: RAM **31,132 / 327,680 bytes (9.5%)**, flash **408,429 / 1,310,720 bytes (31.2%)**.
+
+No project/compiler warnings appeared in that successful run. GitHub Actions emitted only its own Node-runtime deprecation notices.
 
 ### 3. Formatting/static checks
 
-`tools/format.py --check` applies the repository `.clang-format` contract to C/C++ sources. Keep the quality-tool surface deliberately small and reproducible.
+`tools/format.py --check` applies the repository `.clang-format` contract to C/C++ sources. The ES-008 implementation probe checked 68 C/C++ source files successfully.
 
 ## Deterministic traces
-
-Important model milestones keep compact fixtures containing seed/configuration, deterministic input frames, state-hash comparisons and selected counters.
 
 The original ES-004 exact golden trace remains unchanged:
 
@@ -78,37 +70,42 @@ after tick 4 0x8F0F30D22E87FB14
 
 `Model::state_hash()` is a versioned FNV-1a 64 regression/replay identity over canonical explicit fields, including PRNG state and the row-major world. It is deliberately **not cryptographic**.
 
-ES-006 leaves the original ES-004 hash fixture unchanged and adds deterministic dynamics replay. ES-007 additionally gives `kLavaWater` its own scene-schema discriminator and runs two independently constructed models through the same 96-tick scripted input trace, requiring equal hashes before and after every tick. This catches any nondeterministic divergence while allowing intentional scene evolution to be versioned deliberately rather than silently inheriting an unrelated old golden value.
+ES-006 leaves the ES-004 fixture unchanged and adds deterministic dynamics replay. ES-007 adds a Lava + Water scene-schema discriminator plus a 96-tick duplicate-model trace. ES-008 adds Sodium-like + Water and Oil + Fire schema discriminators and duplicate-model traces under explicit scripted inputs. Intentional scene-semantic changes should update the corresponding schema/tests deliberately; unexplained replay divergence is a regression.
 
 Renderer output is not part of the model state hash because rendering is a pure projection and cannot affect future model evolution.
 
-## Hardware validation gates — ES-007
+## Hardware validation gates — product catalogue
 
-ES-007 is the first milestone where the normal firmware is a continuously running product scene, so physical validation is now meaningful. CI **does not** prove any item below.
+CI does **not** prove physical panel appearance, handling quality, actual runtime timing or thermal/current safety.
 
-After flashing current `main`, collect this board evidence:
+After flashing current `main`, collect board evidence across all three scenes:
 
-1. **Orientation:** tilt the physical board left/right/up/down and confirm liquid movement follows the intended matrix direction. Record any axis/sign mismatch; do not compensate in scene code if the board transform is wrong.
-2. **Visual identity:** verify blue/cyan water, bright orange/red hot lava, visibly darker cooled crust, and pale/bright steam or reaction highlights. Confirm matrix pixel order and colour order still look correct.
-3. **Contact behavior:** allow the autonomous scene to run and confirm visible lava-water contact produces steam and persistent crust rather than merely colour-changing in place.
-4. **Motion response:** shake/tap the board and confirm a useful but bounded disturbance/fracture response without scene resets, runaway reactions or sticky motion.
-5. **Timing:** capture at least several minutes of 1 Hz serial telemetry while exercising all four gravity directions and repeated reactions. Record `imu_hz`, `sim_hz`, `render_hz`, `max_sim_us`, `max_loop_us`, event/reaction used/dropped counts and transport/reaction counts. The provisional targets are about 200 Hz IMU polling and 60 Hz simulation/rendering; measured data decides whether those rates remain.
-6. **Output limiter:** confirm telemetry continues to report requested/applied brightness and estimated load; no product frame may bypass `MatrixOutput`.
-7. **Soak:** run 30–60 minutes or longer with active reactions. Record any reset, USB instability, visible colour shift or undesirable heating. The existing 32/255 hard brightness ceiling and 4096-unit aggregate-load envelope remain `NEEDS_PHYSICAL_VALIDATION`; ES-007 currently requests 28/255 and may be reduced automatically by the limiter.
-8. **Optional touch:** if bare-board touch is usable, confirm slider position approximately selects lava-injection X and combo causes a bounded reaction pulse. Touch failure/noise must not prevent the autonomous BOOT+IMU scene from working.
+1. **Scene order:** long BOOT should cycle Lava + Water -> Sodium-like + Water -> Oil + Fire -> Lava + Water; short BOOT should reset the active scene without changing its seed.
+2. **Orientation:** tilt left/right/up/down in each scene and confirm shared gravity follows the intended matrix direction.
+3. **Lava + Water identity:** blue/cyan water, hot orange/red lava, dark persistent crust and pale steam; contact should visibly leave cooled solid.
+4. **Sodium-like + Water identity:** sparse pale/warm particles over water, finite sharp reaction/fire/steam events and visible local motion from interaction rather than permanent flashing.
+5. **Oil + Fire identity:** dim amber oil distinct from water, finite flame fronts, smoke after expiry, and a visibly quiet/extinguished interval before autonomous refill/re-ignition.
+6. **Motion response:** shake/tap should increase useful encounter/rearrangement without resets, runaway reactions or a corrupted gravity direction.
+7. **Timing:** capture several minutes of 1 Hz telemetry while exercising all scenes. Record `imu_hz`, `sim_hz`, `render_hz`, `max_sim_us`, `max_loop_us`, work used/dropped and scene-specific reaction/lifecycle counters. The ~200 Hz IMU / ~60 Hz simulation / ~60 Hz render values remain provisional until measured on the board.
+8. **Output limiter:** confirm every scene reports requested/applied brightness/load and no frame bypasses `MatrixOutput`.
+9. **Optional touch:** if usable, confirm slider/combo perform the documented bounded scene action. Independent A/B zones should remain absent.
+10. **Soak:** run 30–60 minutes or longer while cycling/handling all scenes. Record resets, USB instability, obvious colour shift or undesirable heating. The 32/255 hard brightness ceiling and 4096-unit load envelope remain `NEEDS_PHYSICAL_VALIDATION`.
 
-Do not convert visual comfort, short runtime or software load units into a claimed electrical current/thermal rating.
+Do not convert software load units, visual comfort or short runtime into an electrical/thermal safety claim.
 
-## Serial evidence
+## Serial evidence — ES-008
 
-The ES-007 product runtime emits compact 1 Hz lines containing, as applicable:
+Common runtime lines identify the active scene, seed/tick/hash, measured rates, timing maxima and normalized motion. Scene lines expose material and bounded-work evidence, for example:
 
 ```text
-runtime scene=lava_water seed=... tick=... hash=... imu_hz=... sim_hz=... render_hz=... max_sim_us=... max_loop_us=... g=(...,... ) shake=... tap=...
-scene.lava_water water=... lava=... crust=... steam=... react=... move=... fracture=... inject_lava=... inject_water=... touch_lava=... burst=... event=used/limit/drop reaction=used/limit/drop render_minor=... led=requested/applied load=... limited=...
+runtime scene=sodium_water seed=... tick=... hash=... imu_hz=... sim_hz=... render_hz=... max_sim_us=...
+scene.sodium_water water=... sodium=... fire=... steam=... react=... impulse=... move=... event=used/limit/drop reaction=used/limit/drop led=requested/applied load=... limited=...
+
+runtime scene=oil_fire ...
+scene.oil_fire water=... oil=... fire=... smoke=... react=... expired=... move=... inject_oil=... auto_ignite=... combo_ignite=...
 ```
 
-This telemetry is evidence plumbing, not evidence by itself. Physical claims require captured board output.
+Telemetry is evidence plumbing, not physical evidence by itself.
 
 ## PR checklist
 
