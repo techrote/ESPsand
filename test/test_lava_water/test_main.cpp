@@ -327,7 +327,8 @@ void test_long_randomized_scene_replay_remains_bounded() {
     TEST_ASSERT_EQUAL_UINT64(first.state_hash(), second.state_hash());
     TEST_ASSERT_TRUE(first.invariants_hold());
     TEST_ASSERT_TRUE(first.tick_work_stats().events.used <= first.tick_work_stats().events.limit);
-    TEST_ASSERT_TRUE(first.tick_work_stats().reactions.used <= first.tick_work_stats().reactions.limit);
+    TEST_ASSERT_TRUE(first.tick_work_stats().reactions.used <=
+                     first.tick_work_stats().reactions.limit);
     TEST_ASSERT_EQUAL_UINT16(0U, first.world().totals().invalid_cells);
   }
 }
