@@ -7,6 +7,7 @@
 #include <espsand/render/world_renderer.hpp>
 #include <espsand/sim/materials.hpp>
 #include <espsand/sim/model.hpp>
+#include <espsand/sim/scene_limits.hpp>
 
 namespace {
 
@@ -36,6 +37,10 @@ InputFrame gravity_frame(float x, float y) {
 
 std::uint32_t material_mass(const Model& model, MaterialId material) {
   return model.world().totals().mass[espsand::sim::material_index(material)];
+}
+
+std::uint16_t material_cells(const Model& model, MaterialId material) {
+  return model.world().totals().cell_count[espsand::sim::material_index(material)];
 }
 
 struct Centroid {
@@ -112,14 +117,18 @@ void test_product_scene_catalogue_is_stable() {
   TEST_ASSERT_EQUAL_STRING("moss_garden", espsand::sim::scene_name(SceneId::kMossGarden));
 }
 
-void test_sodium_scene_initializes_water_and_finite_reactant_deterministically() {
+void test_sodium_scene_initializes_sparse_water_and_finite_reactant_deterministically() {
   Model first(scene_config(SceneId::kSodiumWater));
   Model second(scene_config(SceneId::kSodiumWater));
 
   TEST_ASSERT_EQUAL_UINT64(first.state_hash(), second.state_hash());
   TEST_ASSERT_TRUE(first.invariants_hold());
-  TEST_ASSERT_TRUE(material_mass(first, MaterialId::kWater) > 10000U);
-  TEST_ASSERT_TRUE(material_mass(first, MaterialId::kSodiumLike) > 0U);
+  TEST_ASSERT_EQUAL_UINT16(12U, material_cells(first, MaterialId::kWater));
+  TEST_ASSERT_EQUAL_UINT16(4U, material_cells(first, MaterialId::kSodiumLike));
+  TEST_ASSERT_TRUE(material_cells(first, MaterialId::kWater) <=
+                   espsand::sim::kProductMaterialCellLimit);
+  TEST_ASSERT_TRUE(material_cells(first, MaterialId::kSodiumLike) <=
+                   espsand::sim::kProductMaterialCellLimit);
   TEST_ASSERT_EQUAL_UINT32(0U, material_mass(first, MaterialId::kFire));
   TEST_ASSERT_EQUAL_UINT32(0U, material_mass(first, MaterialId::kSteam));
 }
@@ -131,7 +140,7 @@ void test_sodium_contact_is_finite_and_drives_shared_reaction_impulse() {
   bool saw_reaction = false;
   bool saw_impulse = false;
 
-  for (std::uint32_t tick = 0; tick < 120U; ++tick) {
+  for (std::uint32_t tick = 0; tick < 140U; ++tick) {
     model.step(gravity_frame(0.0F, 1.0F));
     saw_reaction = saw_reaction || model.dynamics_stats().reactions_applied != 0U;
     saw_impulse = saw_impulse || model.dynamics_stats().reaction_impulses != 0U;
@@ -161,8 +170,9 @@ void test_sodium_combo_is_bounded_and_uses_shared_reaction_path() {
                    model.tick_work_stats().reactions.limit);
 }
 
-void test_sodium_slider_injects_reactant_at_bounded_position() {
+void test_sodium_slider_spawns_secondary_water_near_selected_x() {
   Model model(scene_config(SceneId::kSodiumWater, 456));
+  const std::uint16_t water_before = material_cells(model, MaterialId::kWater);
   InputFrame frame{};
   frame.slider_active = true;
   frame.slider_position = 0.78F;
@@ -170,9 +180,12 @@ void test_sodium_slider_injects_reactant_at_bounded_position() {
   model.step(frame);
 
   const auto stats = model.sodium_water_stats();
-  TEST_ASSERT_EQUAL_UINT16(1U, stats.touch_sodium_injections);
+  TEST_ASSERT_EQUAL_UINT16(1U, stats.touch_water_injections);
   TEST_ASSERT_TRUE(stats.last_injection_x >= 9U);
   TEST_ASSERT_TRUE(stats.last_injection_x <= 14U);
+  TEST_ASSERT_TRUE(material_cells(model, MaterialId::kWater) > water_before);
+  TEST_ASSERT_TRUE(material_cells(model, MaterialId::kWater) <=
+                   espsand::sim::kProductMaterialCellLimit);
 }
 
 void test_sodium_fixed_seed_trace_replays_identically() {
@@ -187,7 +200,7 @@ void test_sodium_fixed_seed_trace_replays_identically() {
   }
 }
 
-void test_oil_scene_starts_as_low_density_fuel_layer_over_water() {
+void test_oil_scene_starts_as_sparse_low_density_fuel_over_water() {
   Model model(scene_config(SceneId::kOilFire));
   const Centroid oil = centroid_for(model, MaterialId::kOil);
   const Centroid water = centroid_for(model, MaterialId::kWater);
@@ -195,6 +208,10 @@ void test_oil_scene_starts_as_low_density_fuel_layer_over_water() {
   TEST_ASSERT_TRUE(oil.count > 0U);
   TEST_ASSERT_TRUE(water.count > 0U);
   TEST_ASSERT_TRUE(oil.y < water.y);
+  TEST_ASSERT_TRUE(material_cells(model, MaterialId::kOil) <=
+                   espsand::sim::kProductMaterialCellLimit);
+  TEST_ASSERT_TRUE(material_cells(model, MaterialId::kWater) <=
+                   espsand::sim::kProductMaterialCellLimit);
   TEST_ASSERT_TRUE(material_mass(model, MaterialId::kFire) > 0U);
   TEST_ASSERT_TRUE(model.invariants_hold());
 }
@@ -206,7 +223,7 @@ void test_oil_fire_consumes_finite_fuel_and_extinguishes_before_refill_phase() {
   bool saw_reaction = false;
   bool saw_expiry = false;
 
-  for (std::uint32_t tick = 0; tick < 200U; ++tick) {
+  for (std::uint32_t tick = 0; tick < 240U; ++tick) {
     model.step(gravity_frame(0.0F, 1.0F));
     saw_reaction = saw_reaction || model.dynamics_stats().reactions_applied != 0U;
     saw_expiry = saw_expiry || model.dynamics_stats().fire_cells_expired != 0U;
@@ -233,8 +250,9 @@ void test_oil_combo_ignites_existing_fuel_with_event_budget() {
   TEST_ASSERT_TRUE(model.tick_work_stats().events.used <= model.tick_work_stats().events.limit);
 }
 
-void test_oil_slider_adds_fuel_at_bounded_position() {
+void test_oil_slider_ignites_secondary_fire_near_selected_x() {
   Model model(scene_config(SceneId::kOilFire, 333));
+  const std::uint32_t oil_before = material_mass(model, MaterialId::kOil);
   InputFrame frame{};
   frame.slider_active = true;
   frame.slider_position = 0.2F;
@@ -242,15 +260,16 @@ void test_oil_slider_adds_fuel_at_bounded_position() {
   model.step(frame);
 
   const auto stats = model.oil_fire_stats();
-  TEST_ASSERT_EQUAL_UINT16(1U, stats.touch_oil_injections);
+  TEST_ASSERT_EQUAL_UINT16(1U, stats.touch_ignitions);
   TEST_ASSERT_TRUE(stats.last_injection_x <= 6U);
+  TEST_ASSERT_TRUE(material_mass(model, MaterialId::kOil) < oil_before);
 }
 
 void test_oil_fixed_seed_trace_replays_identically() {
   Model first(scene_config(SceneId::kOilFire, 0x01F1AEULL));
   Model second(scene_config(SceneId::kOilFire, 0x01F1AEULL));
 
-  for (std::uint32_t tick = 0; tick < 520U; ++tick) {
+  for (std::uint32_t tick = 0; tick < 560U; ++tick) {
     const InputFrame frame = trace_frame(tick);
     first.step(frame);
     second.step(frame);
@@ -318,15 +337,15 @@ void test_energetic_scenes_randomized_replay_remains_bounded() {
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_product_scene_catalogue_is_stable);
-  RUN_TEST(test_sodium_scene_initializes_water_and_finite_reactant_deterministically);
+  RUN_TEST(test_sodium_scene_initializes_sparse_water_and_finite_reactant_deterministically);
   RUN_TEST(test_sodium_contact_is_finite_and_drives_shared_reaction_impulse);
   RUN_TEST(test_sodium_combo_is_bounded_and_uses_shared_reaction_path);
-  RUN_TEST(test_sodium_slider_injects_reactant_at_bounded_position);
+  RUN_TEST(test_sodium_slider_spawns_secondary_water_near_selected_x);
   RUN_TEST(test_sodium_fixed_seed_trace_replays_identically);
-  RUN_TEST(test_oil_scene_starts_as_low_density_fuel_layer_over_water);
+  RUN_TEST(test_oil_scene_starts_as_sparse_low_density_fuel_over_water);
   RUN_TEST(test_oil_fire_consumes_finite_fuel_and_extinguishes_before_refill_phase);
   RUN_TEST(test_oil_combo_ignites_existing_fuel_with_event_budget);
-  RUN_TEST(test_oil_slider_adds_fuel_at_bounded_position);
+  RUN_TEST(test_oil_slider_ignites_secondary_fire_near_selected_x);
   RUN_TEST(test_oil_fixed_seed_trace_replays_identically);
   RUN_TEST(test_three_energetic_scenes_render_distinct_initial_frames);
   RUN_TEST(test_energetic_scenes_randomized_replay_remains_bounded);
