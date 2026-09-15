@@ -54,6 +54,7 @@ class MossGardenScene {
 public:
   void initialize(World& world, Pcg32& prng) noexcept;
   MossGardenSceneStats before_dynamics(MossGardenTickContext context) noexcept;
+  void after_dynamics(MossGardenTickContext context, MossGardenSceneStats& stats) noexcept;
 
   MossGardenStateSnapshot snapshot() const noexcept;
   bool invariants_hold(const World& world) const noexcept;
