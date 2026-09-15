@@ -308,7 +308,8 @@ void OilFireScene::initialize(World& world, Pcg32& prng) const noexcept {
     static_cast<void>(world.set_cell(point[0], point[1], water));
   }
 
-  // A short vertical fuel column guarantees genuine shared propagation while keeping the scene sparse.
+  // A short vertical fuel column guarantees genuine shared propagation while keeping
+  // the scene sparse.
   // clang-format off
   constexpr std::array<std::array<int, 2>, 10> kOilPockets{{
       {{0, 9}}, {{0, 10}}, {{0, 11}}, {{0, 12}}, {{4, 12}},
