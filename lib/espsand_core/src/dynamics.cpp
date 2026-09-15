@@ -133,8 +133,8 @@ bool try_move(World& world, std::size_t source_index, int dx, int dy, std::uint8
     return false;
   }
 
-  const std::size_t target_index = static_cast<std::size_t>(target_y) * kWorldWidth +
-                                   static_cast<std::size_t>(target_x);
+  const std::size_t target_index =
+      static_cast<std::size_t>(target_y) * kWorldWidth + static_cast<std::size_t>(target_x);
   if (claimed[target_index]) {
     return false;
   }
@@ -176,7 +176,8 @@ bool try_move(World& world, std::size_t source_index, int dx, int dy, std::uint8
   return true;
 }
 
-void transport(World& world, const InputFrame& frame, std::uint64_t tick, DynamicsStats& stats) noexcept {
+void transport(World& world, const InputFrame& frame, std::uint64_t tick,
+               DynamicsStats& stats) noexcept {
   const Direction gravity = choose_gravity_direction(frame, tick);
   stats.gravity_dx = static_cast<std::int8_t>(gravity.dx);
   stats.gravity_dy = static_cast<std::int8_t>(gravity.dy);
@@ -236,8 +237,8 @@ void transport(World& world, const InputFrame& frame, std::uint64_t tick, Dynami
     if (try_move(world, index, first_dx, first_dy, stats.disturbance_q8, true, claimed, stats)) {
       continue;
     }
-    static_cast<void>(try_move(world, index, -first_dx, -first_dy, stats.disturbance_q8, true,
-                               claimed, stats));
+    static_cast<void>(
+        try_move(world, index, -first_dx, -first_dy, stats.disturbance_q8, true, claimed, stats));
   }
 }
 
@@ -402,8 +403,7 @@ void exchange_heat(World& world, DynamicsStats& stats) noexcept {
           continue;
         }
 
-        std::int32_t exchange =
-            (difference * static_cast<std::int32_t>(conductivity)) / 1024;
+        std::int32_t exchange = (difference * static_cast<std::int32_t>(conductivity)) / 1024;
         exchange = std::clamp<std::int32_t>(exchange, -128, 128);
         if (exchange == 0) {
           continue;
