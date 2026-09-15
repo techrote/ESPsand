@@ -187,9 +187,9 @@ void test_combo_uses_shared_reaction_path_for_bounded_burst() {
 
   TEST_ASSERT_EQUAL_UINT16(1U, model.lava_water_stats().burst_pairs);
   TEST_ASSERT_TRUE(model.dynamics_stats().reactions_applied >= 1U);
-  TEST_ASSERT_TRUE(model.tick_work_stats().events.used <= model.tick_work_stats().events.limit);
-  TEST_ASSERT_TRUE(
-      model.tick_work_stats().reactions.used <= model.tick_work_stats().reactions.limit);
+  const auto work = model.tick_work_stats();
+  TEST_ASSERT_TRUE(work.events.used <= work.events.limit);
+  TEST_ASSERT_TRUE(work.reactions.used <= work.reactions.limit);
 }
 
 void test_pinch_slider_injects_lava_at_bounded_position() {
@@ -224,16 +224,16 @@ void test_fixed_seed_trace_capture_is_repeatable() {
   Model first(lava_water_config(0x0BADC0DEULL));
   Model second(lava_water_config(0x0BADC0DEULL));
 
-  std::printf("ES007_TRACE initial=%016llX\n",
-              static_cast<unsigned long long>(first.state_hash()));
+  const auto initial_hash = static_cast<unsigned long long>(first.state_hash());
+  std::printf("ES007_TRACE initial=%016llX\n", initial_hash);
   for (std::uint32_t tick = 0; tick < 96U; ++tick) {
     const InputFrame frame = trace_frame(tick);
     first.step(frame);
     second.step(frame);
     TEST_ASSERT_EQUAL_UINT64(first.state_hash(), second.state_hash());
     if (tick == 0U || tick == 23U || tick == 47U || tick == 71U || tick == 95U) {
-      std::printf("ES007_TRACE tick=%u hash=%016llX\n", tick + 1U,
-                  static_cast<unsigned long long>(first.state_hash()));
+      const auto hash = static_cast<unsigned long long>(first.state_hash());
+      std::printf("ES007_TRACE tick=%u hash=%016llX\n", tick + 1U, hash);
     }
   }
 }
@@ -337,9 +337,9 @@ void test_long_randomized_scene_replay_remains_bounded() {
     second.step(frame);
     TEST_ASSERT_EQUAL_UINT64(first.state_hash(), second.state_hash());
     TEST_ASSERT_TRUE(first.invariants_hold());
-    TEST_ASSERT_TRUE(first.tick_work_stats().events.used <= first.tick_work_stats().events.limit);
-    TEST_ASSERT_TRUE(first.tick_work_stats().reactions.used <=
-                     first.tick_work_stats().reactions.limit);
+    const auto work = first.tick_work_stats();
+    TEST_ASSERT_TRUE(work.events.used <= work.events.limit);
+    TEST_ASSERT_TRUE(work.reactions.used <= work.reactions.limit);
     TEST_ASSERT_EQUAL_UINT16(0U, first.world().totals().invalid_cells);
   }
 }
