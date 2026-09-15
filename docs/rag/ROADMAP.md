@@ -24,39 +24,39 @@ ES-003/003A established broad `cap_combo`, a pinch-gated coarse slider and an ex
 
 ES-004 establishes the host-testable 16×16 deterministic world, compact cell/material registry, model-owned seeded PCG32, fixed-step normalized `InputFrame`, explicit lifecycle seam, bounded event/reaction work counters, stable state hashing and golden replay fixtures.
 
-Subsequent B milestones build on these contracts rather than replacing deterministic state ownership. Intentional model-semantic changes must update the corresponding fixture/schema deliberately.
-
 ### B2. Renderer and power-aware output — ES-005 baseline
 
 ES-005 establishes deterministic 2×2 supersampled aggregation to 8×8, important-minority preservation, centralized material/thermal shading, fixed-point exposure/tone mapping, pure render diagnostics, and a mandatory physical `MatrixOutput` limiter path.
 
-The current board policy remains intentionally provisional: 32/255 hard brightness ceiling plus a 4096-unit dimensionless aggregate frame-load envelope. These are development limits, not validated current/temperature ratings; sustained physical soak evidence is still required before raising or certifying them.
+The current board policy remains intentionally provisional: 32/255 hard brightness ceiling plus a 4096-unit dimensionless aggregate frame-load envelope. These are development limits, not validated current/temperature ratings.
 
 ### B3. Transport, heat, gas and reaction engine — ES-006 baseline
 
-ES-006 establishes the shared deterministic material-dynamics layer used by later scenes:
-
-- gravity-directed and buoyant whole-cell transport with exact tracked-mass conservation;
-- centralized density ordering and distinct water/oil/lava mobility;
-- deterministic lateral liquid relaxation and gas dispersion with bounded motion disturbance;
-- compact recent-motion proxies rather than a full velocity field;
-- fixed-size pairwise thermal exchange plus material ambient loss;
-- centralized bounded lava-water, sodium-like-water and oil-fire reaction primitives;
-- finite shared fire lifetime;
-- hard reaction/event work budgets with no recursive reaction chains;
-- a non-product dynamics fixture and randomized conservation/replay stress tests.
-
-Raw IMU data still remains outside the model. ES-006 consumes only the normalized ES-004 `InputFrame` gravity/shake/tap/motion/spin contract and renders later scene state through the ES-005 output path.
+ES-006 establishes shared deterministic gravity/buoyancy transport, centralized density/mobility, bounded thermal exchange, common reaction primitives, finite fire lifetime, compact motion proxies and hard work budgets. Raw IMU data remains outside the model; shared dynamics consumes only normalized `InputFrame` semantics.
 
 ## Milestone C — Hero vertical slices
 
-### C1. Lava + Water
+### C1. Lava + Water — ES-007 baseline
 
-First complete scene proving the stack: liquid contact, cooling/crust, steam/gas, heat glow, tilt, shake/tap and optional capacitive injection. This issue is also the first physical timing/scene-loop benchmark for the ES-006 dynamics kernel; shared deficiencies should be fixed in the core rather than hidden in scene code.
+ES-007 establishes the first complete product scene and the normal product runtime:
+
+- normal firmware boots directly into deterministic Lava + Water;
+- a strong water reservoir + hot lava initial layout guarantees useful early interaction;
+- autonomous bounded lava/water replenishment keeps the scene active;
+- all flow, heat, gas and lava-water conversion reuse ES-006 shared mechanics;
+- cooled crust is persistent and visibly darker; steam remains a high-priority pale/bright feature;
+- pure `MotionInterpreter` converts raw IMU samples into low-pass matrix gravity plus separate shake/tap/motion/spin signals;
+- tilt changes flow; strong motion can perform bounded mass-preserving crust remixing;
+- accepted ES-003A slider/combo touch semantics provide optional lava/contact injection without reviving rejected A/B zones;
+- normal runtime schedules provisional ~200 Hz IMU sampling, ~60 Hz simulation and ~60 Hz rendering with no catch-up backlog;
+- 1 Hz telemetry exposes scene state, rates, tick maxima, work budgets and output-limiter decisions;
+- `test_lava_water` locks deterministic scene initialization, reaction evolution, tilt divergence, reset, fixed-seed replay, input conditioning and randomized bounded replay.
+
+The first CI integration probe passed 66/66 native tests and built both firmware targets. Physical orientation, visible quality, actual rates and thermal/brightness behavior still require the documented board checklist; these are not inferred from CI.
 
 ### C2. Sodium-like + Water and Oil + Fire
 
-Add two visually distinct energetic scenes using the same core. Avoid scene-local physics duplication.
+Next: add two visually distinct energetic scenes using the same shared core and the now-established product runtime/scene lifecycle. Avoid scene-local physics duplication. Future touch mappings must use the actual slider/combo capability rather than old aspirational A/B buttons.
 
 ### C3. Moss Garden + Mites
 
@@ -110,8 +110,8 @@ Every milestone preserves:
 - centralized LED output budget;
 - hardware abstraction seams;
 - button + IMU sufficiency even without touch;
-- bounded per-tick work;
-- exact tracked-mass conservation for transport unless an explicitly documented reaction later changes that contract;
+- bounded per-tick work and no unbounded scheduler catch-up;
+- exact tracked-mass conservation for shared transport/reactions, except intentional documented scene material injection;
 - explicit distinction between automated checks and physical-board validation.
 
 ## Deferred post-v0 directions
