@@ -24,17 +24,6 @@ Cell material_cell(MaterialId material, std::uint8_t mass, std::int16_t temperat
   return cell;
 }
 
-void add_border(World& world) noexcept {
-  const Cell wall = material_cell(MaterialId::kWall, 255);
-  for (std::size_t y = 0; y < kWorldHeight; ++y) {
-    for (std::size_t x = 0; x < kWorldWidth; ++x) {
-      if (x == 0U || y == 0U || x + 1U == kWorldWidth || y + 1U == kWorldHeight) {
-        static_cast<void>(world.set_cell(static_cast<int>(x), static_cast<int>(y), wall));
-      }
-    }
-  }
-}
-
 bool can_inject_into(const Cell& cell) noexcept {
   return cell.material == MaterialId::kEmpty || cell.material == MaterialId::kSteam ||
          cell.material == MaterialId::kSmoke || cell.material == MaterialId::kFire;
@@ -49,37 +38,51 @@ bool try_inject(World& world, int x, int y, const Cell& material) noexcept {
   return true;
 }
 
-std::uint8_t slider_to_interior_x(float position) noexcept {
-  const float scaled = position * static_cast<float>(kWorldWidth - 3U);
-  const auto rounded = static_cast<std::uint32_t>(scaled + 0.5F);
-  return static_cast<std::uint8_t>(1U + std::min<std::uint32_t>(rounded, kWorldWidth - 3U));
+std::uint8_t slider_to_x(float position) noexcept {
+  const float scaled = position * static_cast<float>(kWorldWidth - 1U);
+  return static_cast<std::uint8_t>(
+      std::min<std::uint32_t>(kWorldWidth - 1U, static_cast<std::uint32_t>(scaled + 0.5F)));
 }
 
-bool inject_top(World& world, Pcg32& prng, MaterialId material, std::uint8_t mass,
-                std::int16_t temperature, std::uint8_t& injected_x) noexcept {
-  const std::uint32_t interior_width = static_cast<std::uint32_t>(kWorldWidth - 2U);
-  const std::uint32_t start = prng.bounded(interior_width);
-  for (std::uint32_t offset = 0; offset < interior_width; ++offset) {
-    const std::uint32_t interior = (start + offset) % interior_width;
-    const std::uint8_t x = static_cast<std::uint8_t>(1U + interior);
-    if (try_inject(world, x, 1, material_cell(material, mass, temperature))) {
-      injected_x = x;
+bool inject_lava_vent(World& world, Pcg32& prng, std::uint8_t& injected_x) noexcept {
+  constexpr std::array<int, 8> kVentXs{{7, 8, 6, 9, 5, 10, 4, 11}};
+  const std::uint32_t start = prng.bounded(4U);
+  const Cell lava = material_cell(MaterialId::kLava, kLavaMass, kLavaTemperature);
+  for (std::uint32_t offset = 0; offset < kVentXs.size(); ++offset) {
+    const int x = kVentXs[(start + offset) % kVentXs.size()];
+    if (try_inject(world, x, 0, lava)) {
+      injected_x = static_cast<std::uint8_t>(x);
       return true;
     }
   }
   return false;
 }
 
+bool refill_water_basin(World& world, Pcg32& prng, std::uint8_t& injected_x) noexcept {
+  const Cell water = material_cell(MaterialId::kWater, kWaterMass, kWaterTemperature);
+  const std::uint32_t start = prng.bounded(static_cast<std::uint32_t>(kWorldWidth));
+  for (int y = static_cast<int>(kWorldHeight) - 1; y >= 10; --y) {
+    for (std::uint32_t offset = 0; offset < kWorldWidth; ++offset) {
+      const int x = static_cast<int>((start + offset) % kWorldWidth);
+      if (try_inject(world, x, y, water)) {
+        injected_x = static_cast<std::uint8_t>(x);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 bool inject_touch_lava(World& world, float position, std::uint8_t& injected_x) noexcept {
-  const std::uint8_t preferred = slider_to_interior_x(position);
-  constexpr std::array<int, 5> kOffsets{{0, -1, 1, -2, 2}};
+  const std::uint8_t preferred = slider_to_x(position);
+  constexpr std::array<int, 7> kOffsets{{0, -1, 1, -2, 2, -3, 3}};
   const Cell lava = material_cell(MaterialId::kLava, kLavaMass, kLavaTemperature);
   for (int offset : kOffsets) {
     const int x = static_cast<int>(preferred) + offset;
-    if (x <= 0 || x + 1 >= static_cast<int>(kWorldWidth)) {
+    if (x < 0 || x >= static_cast<int>(kWorldWidth)) {
       continue;
     }
-    if (try_inject(world, x, 1, lava)) {
+    if (try_inject(world, x, 0, lava)) {
       injected_x = static_cast<std::uint8_t>(x);
       return true;
     }
@@ -88,15 +91,15 @@ bool inject_touch_lava(World& world, float position, std::uint8_t& injected_x) n
 }
 
 bool inject_reaction_pair(World& world, Pcg32& prng) noexcept {
-  const std::uint32_t interior_width = static_cast<std::uint32_t>(kWorldWidth - 3U);
-  const std::uint32_t interior_height = static_cast<std::uint32_t>(kWorldHeight - 4U);
-  const std::uint32_t candidates = interior_width * interior_height;
+  const std::uint32_t width = static_cast<std::uint32_t>(kWorldWidth - 1U);
+  const std::uint32_t height = static_cast<std::uint32_t>(kWorldHeight - 2U);
+  const std::uint32_t candidates = width * height;
   const std::uint32_t start = prng.bounded(candidates);
 
   for (std::uint32_t offset = 0; offset < candidates; ++offset) {
     const std::uint32_t candidate = (start + offset) % candidates;
-    const int x = 1 + static_cast<int>(candidate % interior_width);
-    const int y = 2 + static_cast<int>(candidate / interior_width);
+    const int x = static_cast<int>(candidate % width);
+    const int y = 1 + static_cast<int>(candidate / width);
     Cell* first = world.try_cell(x, y);
     Cell* second = world.try_cell(x + 1, y);
     if (first == nullptr || second == nullptr || !can_inject_into(*first) ||
@@ -134,11 +137,9 @@ bool fracture_one_crust(World& world, Pcg32& prng) noexcept {
          ++direction_offset) {
       const auto& direction =
           kDirections[(direction_start + direction_offset) % kDirections.size()];
-      const int target_x = x + direction[0];
-      const int target_y = y + direction[1];
-      Cell* target = world.try_cell(target_x, target_y);
-      if (target == nullptr || target->material == MaterialId::kWall ||
-          target->material == MaterialId::kCrust || target->material == MaterialId::kMoss) {
+      Cell* target = world.try_cell(x + direction[0], y + direction[1]);
+      if (target == nullptr || target->material == MaterialId::kCrust ||
+          target->material == MaterialId::kMoss) {
         continue;
       }
 
@@ -160,23 +161,23 @@ float disturbance_strength(const InputFrame& input) noexcept {
 
 void LavaWaterScene::initialize(World& world, Pcg32& prng) const noexcept {
   world.clear();
-  add_border(world);
 
   const Cell water = material_cell(MaterialId::kWater, kWaterMass, kWaterTemperature);
-  for (int y = 10; y <= 14; ++y) {
-    for (int x = 2; x <= 13; ++x) {
+  for (int y = 10; y < static_cast<int>(kWorldHeight); ++y) {
+    for (int x = 0; x < static_cast<int>(kWorldWidth); ++x) {
       static_cast<void>(world.set_cell(x, y, water));
     }
   }
 
   const Cell lava = material_cell(MaterialId::kLava, kLavaMass, kLavaTemperature);
-  for (int y = 3; y <= 4; ++y) {
-    for (int x = 5; x <= 10; ++x) {
+  for (int y = 0; y <= 3; ++y) {
+    for (int x = 6; x <= 9; ++x) {
       static_cast<void>(world.set_cell(x, y, lava));
     }
   }
 
-  const std::uint8_t contact_x = static_cast<std::uint8_t>(5U + prng.bounded(6U));
+  const std::uint8_t contact_x = static_cast<std::uint8_t>(7U + prng.bounded(2U));
+  static_cast<void>(world.set_cell(contact_x, 8, lava));
   static_cast<void>(world.set_cell(contact_x, 9, lava));
 }
 
@@ -188,15 +189,13 @@ LavaWaterSceneStats LavaWaterScene::before_dynamics(LavaWaterTickContext context
   WorkBudget& event_budget = context.event_budget;
 
   if (context.tick != 0U && context.tick % kAutoLavaPeriodTicks == 0U) {
-    if (inject_top(world, prng, MaterialId::kLava, kLavaMass, kLavaTemperature,
-                   stats.last_injection_x)) {
+    if (inject_lava_vent(world, prng, stats.last_injection_x)) {
       ++stats.autonomous_lava_injections;
     }
   }
 
   if (context.tick != 0U && context.tick % kAutoWaterPeriodTicks == 0U) {
-    if (inject_top(world, prng, MaterialId::kWater, kWaterMass, kWaterTemperature,
-                   stats.last_injection_x)) {
+    if (refill_water_basin(world, prng, stats.last_injection_x)) {
       ++stats.autonomous_water_injections;
     }
   }

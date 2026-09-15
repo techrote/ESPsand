@@ -9,7 +9,7 @@
 
 namespace espsand::sim {
 
-inline constexpr std::uint32_t kLavaWaterSceneSchemaVersion = 1;
+inline constexpr std::uint32_t kLavaWaterSceneSchemaVersion = 2;
 
 struct LavaWaterSceneStats {
   std::uint16_t autonomous_lava_injections = 0;

@@ -6,82 +6,74 @@ This roadmap is the reviewed execution sequence. GitHub issues map directly onto
 
 ### A1. Repository/toolchain/CI + board profile
 
-Establish PlatformIO, host-native tests, firmware build CI, formatting, and a documented board profile/characterization harness. Unknown physical values remain explicitly marked until measured.
+PlatformIO, native tests, firmware CI, formatting and board-profile documentation.
 
 ### A2. Board I/O runtime
 
-Implement matrix output, QMI8658C raw IMU driver/adapter, BOOT short/long state machine, monotonic clock, serial diagnostics, fake hardware interfaces and a simple diagnostic showcase.
+Matrix output, QMI8658C adapter, BOOT gesture state machine, monotonic clock, serial diagnostics and hardware abstraction seams.
 
 ### A3. No-component capacitive feasibility
 
-Enumerate safe candidate touch GPIOs from the validated board profile, implement diagnostic sampling/baselines/common-mode normalization, characterize the bare-board signal and expose only physically supported bounded semantics with graceful fallback.
-
-ES-003/003A established broad `cap_combo`, a pinch-gated coarse slider and an explicit bounded external noise impulse; reliable independent A/B buttons were not supported on the tested bare board.
+ES-003/003A established broad common-mode touch, a pinch-gated coarse slider and explicit bounded external noise. Reliable independent A/B buttons were not supported on the tested bare board.
 
 ## Milestone B — Deterministic micro-world
 
-### B1. World/material kernel — ES-004 baseline
+### B1. ES-004 — world/material kernel
 
-ES-004 establishes the host-testable 16×16 deterministic world, compact cell/material registry, model-owned seeded PCG32, fixed-step normalized `InputFrame`, explicit lifecycle seam, bounded event/reaction work counters, stable state hashing and golden replay fixtures.
+Fixed 16x16 world, stable materials, model-owned PCG32, normalized `InputFrame`, lifecycle, bounded work and replay hashes.
 
-### B2. Renderer and power-aware output — ES-005 baseline
+### B2. ES-005 — renderer/output budget
 
-ES-005 establishes deterministic 2×2 supersampled aggregation to 8×8, important-minority preservation, centralized material/thermal shading, fixed-point exposure/tone mapping, pure render diagnostics, and a mandatory physical `MatrixOutput` limiter path.
+Deterministic 2x2 supersampling to 8x8, minority preservation, material/thermal shading and mandatory `MatrixOutput` limiter. Current board policy remains provisional at 32/255 hard brightness plus 4096 software load units.
 
-The current board policy remains intentionally provisional: 32/255 hard brightness ceiling plus a 4096-unit dimensionless aggregate frame-load envelope. These are development limits, not validated current/temperature ratings.
+### B3. ES-006 — shared dynamics
 
-### B3. Transport, heat, gas and reaction engine — ES-006 baseline
-
-ES-006 establishes shared deterministic gravity/buoyancy transport, centralized density/mobility, bounded thermal exchange, common reaction primitives, finite fire lifetime, compact motion proxies and hard work budgets. Raw IMU data remains outside the model; shared dynamics consumes only normalized `InputFrame` semantics.
+Gravity/buoyancy transport, density/mobility, bounded heat, common reactions, finite fire, motion proxies and work budgets.
 
 ## Milestone C — Hero vertical slices
 
-### C1. Lava + Water — ES-007 baseline
+### C1. ES-007 — Lava + Water
 
-ES-007 establishes the first complete product scene and the normal product runtime:
+First complete product runtime/scene, normalized IMU conditioning, shared material dynamics, product telemetry and physical validation plumbing.
 
-- normal firmware boots directly into deterministic Lava + Water;
-- a strong water reservoir + hot lava initial layout guarantees useful early interaction;
-- autonomous bounded lava/water replenishment keeps the scene active;
-- all flow, heat, gas and lava-water conversion reuse ES-006 shared mechanics;
-- cooled crust is persistent and visibly darker; steam remains a high-priority pale/bright feature;
-- pure `MotionInterpreter` converts raw IMU samples into low-pass matrix gravity plus separate shake/tap/motion/spin signals;
-- tilt changes flow; strong motion can perform bounded mass-preserving crust remixing;
-- accepted ES-003A slider/combo touch semantics provide optional lava/contact injection without reviving rejected A/B zones;
-- normal runtime schedules provisional ~200 Hz IMU sampling, ~60 Hz simulation and ~60 Hz rendering with no catch-up backlog;
-- 1 Hz telemetry exposes scene state, rates, tick maxima, work budgets and output-limiter decisions;
-- `test_lava_water` locks deterministic scene initialization, reaction evolution, tilt divergence, reset, fixed-seed replay, input conditioning and randomized bounded replay.
+### C2. ES-008 — Sodium-like + Water and Oil + Fire
 
-The first CI integration probe passed 66/66 native tests and built both firmware targets. Physical orientation, visible quality, actual rates and thermal/brightness behavior still require the documented board checklist; these are not inferred from CI.
+Adds finite energetic scenes and real multi-scene BOOT cycling while reusing shared reactions/fire lifecycle. Three-scene implementation reached 79/79 native tests before ES-009.
 
-### C2. Sodium-like + Water and Oil + Fire — ES-008 baseline
+### C3. ES-009 — Moss Garden + Mites and readability baseline
 
-ES-008 adds two product scenes without duplicating the shared physics stack:
+ES-009 adds the slow ecology scene and also incorporates direct physical-board readability feedback from the first chemistry builds.
 
-- Sodium-like + Water uses the centralized sodium-like/water reaction, generic reaction impulse, shared particle/liquid transport, finite fire and buoyant steam/smoke. Scene policy supplies only deterministic setup, sparse reactant/water replenishment and bounded optional slider/combo injection.
-- Oil + Fire uses centralized oil density/mobility, the common oil/fire reaction and generic fire-to-smoke lifetime. Its autonomous cycle deliberately includes fuel consumption and an extinction interval before sparse refill and re-ignition.
-- the stable product catalogue is now `Lava + Water -> Sodium-like + Water -> Oil + Fire -> Lava + Water`;
-- long BOOT advances through that catalogue; short BOOT resets the current seeded scene;
-- rejected independent A/B touch zones remain disabled. Slider/combo are the only optional product touch semantics, and all three scenes remain demonstrable with BOOT + IMU alone;
-- scene-specific schema IDs/stats extend deterministic state hashing without changing older scene IDs;
-- runtime rendering still uses `WorldRenderer` plus the single `MatrixOutput` limiter, with sparse reaction highlighting generalized to actual hot steam/fire cells;
-- ES-008 native tests lock finite consumption/extinction, reaction impulses, scene order, fixed-seed replay, rendering distinction and randomized bounded replay for both new scenes.
+Implemented baseline:
 
-Physical visual distinction, real handling response, measured scene timing and sustained output comfort remain explicit board-validation work rather than CI claims.
+- Moss Garden with moisture-gated bounded growth energy;
+- local moss spread/reinforcement and plant-like anti-gravity shoots;
+- fixed three-slot mite agent array with two active initially;
+- deterministic seek/wander behavior, biomass feeding, energy gain/loss and starvation;
+- slider rain, combo mite/seed event and bounded shake scatter;
+- mite/growth state included in model hashing;
+- high-contrast post-downsample mite overlay;
+- product scene order becomes `Lava -> Sodium -> Oil -> Moss -> Lava`;
+- explicit containment wall rings are removed from **all product scenes** because world bounds already block out-of-range transport;
+- all logical edge cells and therefore the full 28-LED physical perimeter are available to scene content;
+- Lava, Sodium and Oil layouts are re-composed into larger coherent sources/pools/layers/fronts for 8x8 legibility;
+- deterministic scene-specific temporal presentation persistence reduces frame-to-frame cell churn without affecting model state;
+- reaction and mite overlays remain crisp by being applied after persistence;
+- prior chemistry behavior, determinism and output limiting remain covered by regression tests.
 
-### C3. Moss Garden + Mites
+The first full ES-009 implementation probe passed **91/91 native tests**, product firmware built at 10.6% RAM / 34.8% flash, and bring-up remained 9.5% / 31.2%.
 
-Next: add slow ecology with moisture-dependent moss/plant growth, 1–3 deterministic mobile mite-like agents, feeding, depletion and recovery. It should extend scene variety rather than modifying the already-shared energetic mechanics.
+Physical confirmation is still required for the actual goal behind the rework: scenes should now be more understandable, perimeter LEDs should participate naturally, and persistence should reduce jitter without excessive smear.
 
 ## Milestone D — Breadth and showcase polish
 
 ### D1. Tracer/Dissolution Plume + one additional scene
 
-Implement concentration advection/diffusion and dramatic concentration-dependent colour. Select one extra scene by behaviour-per-complexity after profiling the existing core.
+Next: implement concentration advection/diffusion and dramatic concentration-dependent colour. Select one additional behavior by novelty-per-complexity after profiling the four current product scenes.
 
 ### D2. v0 integration/release
 
-Tune scene order, defaults, transitions, button semantics, motion thresholds, optional touch mappings, serial diagnostics, brightness policy, soak stability, documentation and release metadata. Capture explicit hardware-validation checklist/results where available.
+Tune scene order/defaults/transitions, motion thresholds, optional touch mappings, presentation persistence, palette/contrast, serial diagnostics, brightness policy, soak stability, documentation and release metadata. Physical validation evidence from the four current scenes should directly inform this pass.
 
 ## Dependency graph
 
@@ -108,32 +100,22 @@ D1
 D2
 ```
 
-A3 may proceed after A2 and does not block B1 if touch remains unavailable.
-
 ## Cross-cutting invariants
 
 Every milestone preserves:
 
 - single-board v0 scope;
 - no mandatory network/cloud/app runtime;
-- deterministic fixed-seed core with explicit model-owned randomness;
+- deterministic fixed-seed model with explicit model-owned randomness;
 - host tests for pure logic;
 - centralized LED output budget;
 - hardware abstraction seams;
-- button + IMU sufficiency even without touch;
-- bounded per-tick work and no unbounded scheduler catch-up;
-- exact tracked-mass conservation for shared transport/reactions, except intentional documented scene material injection;
-- explicit distinction between automated checks and physical-board validation.
+- BOOT + IMU sufficiency without touch;
+- bounded per-tick work/no unbounded scheduler catch-up;
+- tracked-mass conservation for shared transport/reactions except documented scene-owned injection/growth;
+- physical display perimeter is content space, not implicit containment UI;
+- explicit distinction between automated evidence and physical-board validation.
 
 ## Deferred post-v0 directions
 
-Document but do not implement unless explicitly promoted by a future issue:
-
-- multiple boards as distributed simulation chunks;
-- physical edge sensing/topology discovery;
-- ESP-NOW boundary exchange;
-- battery power;
-- enclosures/coating-specific calibration;
-- PC/web visualizer;
-- user-authored materials/scenes;
-- richer physical-reference integration with `realref`.
+Multiple distributed boards, physical topology discovery, ESP-NOW boundary exchange, battery power, enclosure-specific calibration, PC/web visualization, user-authored materials/scenes and richer physical-reference integration remain deferred unless promoted by a future issue.

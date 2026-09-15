@@ -2,100 +2,107 @@
 
 ## Goal
 
-Make 64 LEDs imply a world substantially richer than 64 discrete cells while every frame remains inside one centralized output budget.
+Make 64 LEDs imply a world richer and more causally legible than 64 independent pixels while every physical frame remains inside one centralized output budget.
 
-## Internal-to-display mapping — ES-005 baseline
+## Internal-to-display mapping
 
-The 16×16 simulation maps to the physical 8×8 display by deterministic 2×2 logical aggregation. Beauty rendering combines mass-weighted material colour, one deterministic high-importance accent, bounded positive temperature/energy emission, and bounded material-specific `aux` modulation.
+The 16x16 simulation maps to 8x8 by deterministic 2x2 logical aggregation. `WorldRenderer` combines mass-weighted material colour, high-importance minority preservation, bounded thermal emission and material-specific compact state.
 
-The important-minority rule exists so small reaction fronts, hot material and gas features survive downsampling instead of disappearing behind majority coverage. Rendering remains a pure projection: it does not advance model state or consume model PRNG state.
+ES-009 changes product composition, not this projection. Product scenes no longer place a logical wall ring on the array edges, so the 2x2 blocks feeding all **28 physical perimeter LEDs** may now contain ordinary animated scene content.
 
 ## Centralized material shading
 
-`WorldRenderer` owns the material-style table aligned with stable material IDs. Product scenes reuse that table rather than defining scene-local LED palettes:
+One shared style table remains authoritative. Important identities include blue/cyan water, orange/red hot lava, dark crust, pale steam, pale/warm sodium-like material, amber oil, bright finite fire, dim smoke and green moss.
 
-- water: strong blue/cyan identity;
-- hot lava: high-priority saturated orange/red plus bounded thermal contribution;
-- cooled crust: deliberately much darker red/brown than hot lava;
-- steam: pale blue/white with high visual priority;
-- sodium-like: pale/warm high-contrast particle;
-- oil: dim amber/brown fuel distinct from water and flame;
-- fire: strongest high-energy yellow/orange accent;
-- smoke: dim neutral/purple-grey gas after finite fire expiry;
-- other ES-005 identities remain centralized.
+Moss uses existing aux modulation for variation; plant-like shoot state remains a model flag/aux distinction rather than a new material ID.
 
-Exact values are artistic simulation parameters, not measured spectra or temperatures. Invalid material IDs continue to use deterministic fallback/counting.
+Exact RGB values are artistic model parameters, not physical spectra. Invalid material IDs still use deterministic fallback/counting.
 
-## Sparse reaction highlight — ES-007/008
+## Readability composition — ES-009
 
-After ordinary beauty rendering, `SceneRuntime` may brighten **one existing hottest steam or fire output pixel only when the just-completed model tick applied a reaction**. The selected position is derived from actual model state, not wall-clock randomness or a decorative unrelated flash.
+Physical feedback showed that technically correct sub-cell motion was too difficult to interpret on 8x8. ES-009 therefore moves the first three scenes toward larger coherent shapes:
 
-ES-007 originally used this only for steam readability. ES-008 generalizes the same bounded mechanism to fire so sodium and oil reactions remain legible on the 8×8 matrix without introducing a second rendering path.
+- Lava + Water: narrow central source against a broad lower basin;
+- Sodium-like + Water: paired logical reactant drops against a broad blue pool;
+- Oil + Fire: broad amber layer plus a left-originating flame front;
+- Moss Garden: large green wet patches plus explicit moving agent markers.
 
-The highlight is post-render but pre-output-limit. It remains subject to the same physical `MatrixOutput` brightness/load policy as every other pixel.
+These are scene-state choices; they do not bypass or fake the common physics.
 
-## Logical HDR and scene exposure
+## Temporal presentation persistence — ES-009
 
-The ES-005 logical integer HDR/tone-map contract remains:
+`scene_effects::blend_with_previous` blends each base rendered pixel with the previous **base** frame using fixed integer scene-specific weights. Purpose: reduce 60 Hz cell-churn/flicker and make motion read as movement rather than unrelated frame-to-frame pixel changes.
+
+Current previous-frame weights (Q8-like 0..255 scale) are:
+
+- Lava + Water: 56;
+- Sodium-like + Water: 48;
+- Oil + Fire: 64;
+- Moss Garden: 96.
+
+This history is runtime presentation state only. It is reset on scene reset/change and never feeds back into `Model`, PRNG, transport, reactions, agents or state hashes.
+
+The runtime saves the smoothed **base** frame before applying transient overlays. Therefore reaction flashes and mites do not leave artificial trails in subsequent frames.
+
+## Sparse reaction highlight
+
+On a tick with an applied shared reaction, runtime may brighten one hottest actual steam/fire output position. The position derives from live model state. The effect is applied after persistence but before physical limiting, so it stays crisp yet cannot bypass the central power envelope.
+
+## Mite overlay — ES-009
+
+Mites are explicit model agents rather than material cells. After base rendering/persistence, active mite coordinates are projected by integer division from logical `(x,y)` to physical `(x/2,y/2)` and raised to a high-contrast magenta/white marker whose intensity is bounded by mite energy.
+
+This keeps 1–3 agents visible after 2x2 aggregation without erasing or replacing the moss/water cell underneath them. Host tests lock overlay visibility and bounds.
+
+## Logical HDR and scene requests
+
+The ES-005 rational tone-map remains:
 
 ```text
 mapped = exposed * 255 / (exposed + 1024)
 ```
 
-`RenderConfig::exposure_q8` uses 256 = 1.0. Current product requests are deliberately modest and scene-specific:
+Current requested settings:
 
-- Lava + Water: exposure Q8 **320**, brightness request **28/255**;
-- Sodium-like + Water: exposure Q8 **340**, brightness request **26/255**;
-- Oil + Fire: exposure Q8 **300**, brightness request **28/255**.
+- Lava + Water: exposure 320, brightness 28/255;
+- Sodium-like + Water: exposure 340, brightness 26/255;
+- Oil + Fire: exposure 300, brightness 28/255;
+- Moss Garden: exposure 300, brightness 26/255.
 
-These values tune contrast/legibility only. They do not bypass the physical limiter.
+These are presentation requests only.
 
 ## Centralized physical output budget
 
-`MatrixOutput` owns the only physical NeoPixel driver and calls `OutputLimiter` for every frame. The provisional board limits remain:
+`MatrixOutput` remains the only physical NeoPixel gateway. Every frame—including persistence output, reaction highlight and mite overlay—is passed to `OutputLimiter`.
 
-- hard brightness ceiling: **32/255**;
-- aggregate frame-load limit: **4096 dimensionless software load units**.
+Provisional board policy remains:
 
-Dense frames may be reduced below the scene request by the aggregate-load limiter. No scene/runtime may raise the board ceiling or call the LED driver directly.
+- hard brightness ceiling: 32/255;
+- aggregate frame-load limit: 4096 dimensionless software load units.
 
-These are conservative development settings, not certified current/temperature ratings.
-
-## Visual identity of the three product scenes
-
-The current content deliberately relies on state/palette contrast rather than full-frame brightness:
-
-- **Lava + Water:** blue/cyan reservoir, hot orange/red viscous material, persistent dark crust, pale steam;
-- **Sodium-like + Water:** predominantly blue water with sparse pale particles and sharp finite steam/fire events;
-- **Oil + Fire:** dim amber oil above water, bright finite flame fronts, and dim smoke after extinction.
-
-ES-008 host tests require the three initial rendered frames to differ bytewise. That is deterministic automated evidence of distinct projected states, not a substitute for human visual review on the physical 8×8 board.
-
-## Spectacle without sustained maximum brightness
-
-Prefer sparse local contrast, reaction-derived highlights, moving fronts, cooling trails, embers, finite flames and dark post-reaction states. Avoid dense all-white output or permanent high-energy decorative pixels.
-
-Oil + Fire specifically must communicate depletion/extinction through material state, not by leaving an immortal bright flame. Sodium-like reactions are similarly finite/local rather than a sustained flash loop.
+Dense output may be reduced below the requested brightness. These values are development policy, not certified current/temperature limits.
 
 ## Diagnostic render modes
 
-`WorldRenderer` still provides deterministic `kBeauty`, `kMaterialId`, `kTemperature` and `kMass` projections. The separate bring-up/diagnostic runtime remains available even though normal firmware boots the product catalogue.
+`WorldRenderer` still provides deterministic Beauty, Material ID, Temperature and Mass views. The separate bring-up target remains available for raw hardware diagnostics.
 
-`OutputDecision` exposes requested/applied brightness, raw channel sum, estimated load and limiter flags. Product telemetry reports those values for every active scene.
+## Physical validation after ES-009
 
-## Physical validation still required
+CI proves deterministic rendering/persistence/agent projection and the centralized limiter path. It cannot prove that the physical scene is easier to understand.
 
-Software proves output-path centralization and limiter arithmetic, not electrical/thermal safety or subjective scene readability. Physical review should confirm:
+After flashing ES-009, check specifically:
 
-- all three scene identities are visually distinct on the actual panel;
-- sodium/fire/steam highlights are local and readable rather than dense flashes;
-- Oil + Fire visibly gutters out before its autonomous refill/re-ignition phase;
-- no pixel/colour-order regression exists;
-- telemetry shows frames continuing through requested/applied/load limiter state;
-- a 30–60 minute or longer active multi-scene soak causes no undesirable heating, reset, USB instability or obvious colour shift.
+- perimeter LEDs now participate naturally in water/oil/moss/source motion rather than appearing as a static frame;
+- the Lava scene reads as source -> basin -> crust/steam;
+- Sodium-like drops are visible before they react;
+- the Oil fire reads as a moving/depleting front and still reaches extinction;
+- Moss Garden shows stable green biomass plus unmistakable independently moving mite markers;
+- temporal persistence reduces jitter without making motion feel laggy or washing out reactions;
+- all four scenes remain visibly distinct;
+- limiter telemetry remains active and no output path bypasses it.
 
-Do not raise/certify the hard ceiling from a short visual check. Prefer measured current/temperature evidence if available.
+Continue the existing 30–60 minute or longer multi-scene soak before changing the brightness policy. Do not infer an electrical/thermal rating from visual comfort.
 
-## Automated rendering evidence
+## Automated evidence
 
-Existing ES-005/007 renderer tests remain. ES-008 adds a full-scene projection check requiring Lava + Water, Sodium-like + Water and Oil + Fire to produce distinct deterministic initial 8×8 frames. State-evolution tests separately verify finite reaction/fuel behavior; renderer tests do not substitute for physical visual review.
+Existing renderer and scene suites remain green. ES-009 additionally tests that every product scene has zero containment-wall mass, mite overlay changes the correct downsampled pixel, and temporal persistence is byte-deterministic and bounded.

@@ -49,6 +49,8 @@ private:
   io::TouchFrame latest_touch_{};
   sim::InputFrame latest_input_{};
   render::RenderStats latest_render_stats_{};
+  io::Frame8x8 previous_frame_{};
+  bool has_previous_frame_ = false;
 
   std::uint64_t next_imu_us_ = 0;
   std::uint64_t next_sim_us_ = 0;

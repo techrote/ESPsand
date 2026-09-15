@@ -2,9 +2,7 @@
 
 ## Toolchain
 
-Accepted foundation: PlatformIO with pinned Espressif32 + Arduino for firmware, plus a pinned native PlatformIO environment for host tests. See `platformio.ini` and `requirements-dev.txt` for exact versions.
-
-The embedded compile profile uses the generic ESP32-S3 DevKitC definition only as a compiler/framework base. `docs/hardware/BOARD_PROFILE.md` is the hardware source of truth for the actual Waveshare ESP32-S3-Matrix target and `platformio.ini` carries the required FH4R2 memory overrides.
+Accepted foundation: PlatformIO with pinned Espressif32 + Arduino for firmware, plus a pinned native PlatformIO environment for host tests. `docs/hardware/BOARD_PROFILE.md` remains the source of truth for the Waveshare ESP32-S3-Matrix hardware; the generic ESP32-S3 DevKitC definition is only the framework/compiler base.
 
 ## Layering
 
@@ -19,211 +17,170 @@ product runtime
   fixed-step scene simulation / catalogue / lifecycle / timing telemetry
           ↓
 pure model + scene policy
-  world / materials / deterministic state / bounded scene events
+  world / materials / deterministic state / bounded scene events / fixed agents
           ↓
 shared dynamics
   gravity transport / density / gas / heat / bounded reactions / fire lifetime
           ↓
-pure renderer
-  16×16 logical world → deterministic 8×8 RGB frame
+pure rendering + presentation
+  16x16 world -> 8x8 frame -> bounded temporal persistence / overlays
           ↓
 physical output gateway
-  brightness ceiling + aggregate-load limiter → RGB chain
+  brightness ceiling + aggregate-load limiter -> RGB chain
 ```
 
-Dependencies point inward. The pure model, scene policies, shared dynamics, board-independent input state machines, renderer and output limiter contain no Arduino headers, GPIO numbers or LED-driver APIs. ES-004 establishes deterministic state ownership, ES-005 rendering/output budgeting, ES-006 shared material dynamics, ES-007 the first complete product scene/runtime path, and ES-008 the first real multi-scene product catalogue.
+Dependencies point inward. Pure model, scene policy, shared dynamics, input conditioning, renderer/presentation helpers and output limiter contain no Arduino GPIO/LED-driver dependencies.
+
+Milestone ownership:
+
+- ES-004: deterministic world/state/PRNG contracts;
+- ES-005: renderer and centralized output budgeting;
+- ES-006: shared material dynamics;
+- ES-007: first product scene/runtime;
+- ES-008: multi-scene energetic catalogue;
+- ES-009: bounded ecology/agents plus physical-readability rework of all existing product scenes.
 
 ## Current repository shape
 
-```text
-platformio.ini
-src/
-  main.cpp
-  app/
-    diagnostic_runtime.*
-    scene_runtime.*
-  board/
-    board_profile.hpp
-    boot_button.*
-    diagnostics.*
-    matrix_output.*
-    monotonic_clock.hpp
-    qmi8658_imu.*
-    serial_diagnostics.*
-    touch_zones.*
-lib/
-  espsand_core/
-    include/espsand/
-      input/
-        motion_interpreter.hpp
-      io/
-      render/
-        output_limiter.hpp
-        world_renderer.hpp
-      sim/
-        dynamics.hpp
-        energetic_scenes.hpp
-        input_frame.hpp
-        lava_water_scene.hpp
-        materials.hpp
-        model.hpp
-        prng.hpp
-        work_budget.hpp
-        world.hpp
-    src/
-      ...
-      dynamics.cpp
-      energetic_scenes.cpp
-      input_frame.cpp
-      lava_water_scene.cpp
-      model.cpp
-      motion_interpreter.cpp
-      output_limiter.cpp
-      prng.cpp
-      world.cpp
-      world_renderer.cpp
-test/
-  test_foundation/
-  test_board_logic/
-  test_touch_semantics/
-  test_simulation_core/
-  test_renderer/
-  test_dynamics/
-  test_lava_water/
-  test_energetic_scenes/
-docs/
-  hardware/
-  rag/
-```
-
-Later scenes should extend this shape without crossing the board/core seam or duplicating shared mechanics inside scene classes.
-
-## Runtime scheduling — product baseline
-
-The normal `esp32s3` firmware boots `SceneRuntime` into Lava + Water. `esp32s3_bringup` remains the hardware-isolation/diagnostic target.
-
-The product runtime uses independent bounded schedules:
-
-- QMI8658 configured for 1 kHz accel/gyro ODR and polled nominally every 5 ms (~200 Hz);
-- deterministic model target: one tick every 16,667 us (~60 Hz);
-- render target: one frame every 16,667 us (~60 Hz);
-- compact product telemetry: 1 Hz;
-- BOOT sampled every main-loop iteration;
-- touch sampling continues through the accepted ES-003A bounded scan path.
-
-Scheduling uses monotonic microsecond time and **skips missed deadlines rather than running an unbounded catch-up loop**. Hardware poll timing is not simulation state: `Model::step()` receives one sanitized `InputFrame` for each executed logical tick.
-
-The target rates are provisional implementation targets, not claimed physical performance. `SceneRuntime` measures `sim_hz`, `render_hz`, `imu_hz`, `max_sim_us` and `max_loop_us` for physical profiling.
-
-## Product scene catalogue — ES-008 baseline
-
-The catalogue is encoded in pure core state rather than as board/runtime conditionals:
+The pure core now additionally contains:
 
 ```text
-Lava + Water -> Sodium-like + Water -> Oil + Fire -> Lava + Water
+include/espsand/render/scene_effects.hpp
+include/espsand/sim/moss_garden_scene.hpp
+src/scene_effects.cpp
+src/moss_garden_scene.cpp
+test/test_moss_garden/
 ```
 
-`scene_name`, `next_product_scene`, `is_product_scene` and the stable `kProductSceneOrder` keep lifecycle semantics host-testable.
+`MossGardenScene` remains inside pure core. Mites are bounded model agents, not board/runtime objects.
 
-- cold boot begins with Lava + Water;
-- short BOOT resets the active model at the same seed;
-- long BOOT advances to the next product scene and increments the deterministic seed before initialization;
-- fixture scene IDs never enter product cycling.
+## Product world boundaries — ES-009
 
-ES-008 removes the temporary ES-007 one-scene wrap while preserving the same runtime pipeline and fixed-step scheduling.
+Product scenes use the fixed 16x16 array bounds as containment. `DynamicsEngine::try_move()` already rejects targets outside `World::in_bounds()`, so the explicit one-logical-cell wall ring previously placed by product scene initializers was redundant.
 
-## Normalized IMU interpretation
+ES-009 removes that wall ring from Lava + Water, Sodium-like + Water and Oil + Fire, and Moss Garden never adds one. This is intentionally different from the non-product deterministic/dynamics fixtures, which may retain explicit wall cells because their layouts are regression substrates.
 
-Pure-core `MotionInterpreter` sits between raw `ImuSample` and `InputFrame`.
+Consequences:
 
-- valid acceleration is sanitized before use;
-- a low-pass gravity estimate follows credible near-1g motion slowly;
-- transient residual acceleration produces bounded `shake_energy` and `motion_energy` rather than directly steering gravity;
-- tap is a bounded one-shot candidate with a 160 ms cooldown;
-- gyro Z becomes signed normalized `spin_rate`;
-- gravity is projected through the explicit board-to-matrix transform before it reaches the model;
-- invalid/missing samples decay disturbance state rather than injecting arbitrary motion.
+- all 256 logical positions are available to product content;
+- no product-scene wall material is reserved solely for containment;
+- because 2x2 logical blocks map to one physical pixel, the full 8x8 perimeter—28 LEDs—can now display scene content instead of being influenced by a hidden border;
+- explicit wall material remains available for future authored obstacles.
 
-This keeps raw IMU units, polling jitter and transient acceleration outside deterministic simulation semantics. Before the first valid IMU sample, product scenes receive deterministic downward gravity.
+## Product scene catalogue — ES-009
 
-## Hardware abstraction contracts
+The pure-core order is:
 
-The pure core defines narrow interfaces/types for `IClock`, `IImu`, `IButton`, `ITouchZones`, `IMatrixOutput` and `IDiagnostics`. Host tests exercise board-independent policy without ESP32 headers.
+```text
+Lava + Water -> Sodium-like + Water -> Oil + Fire -> Moss Garden -> Lava + Water
+```
 
-Board adapters under `src/board/` are the only layer allowed to know concrete GPIOs or Arduino peripheral APIs. `TouchZones` owns physical sensing/normalization; `SceneRuntime` consumes only its accepted semantic frame.
+`scene_name`, `next_product_scene`, `is_product_scene` and `kProductSceneOrder` keep lifecycle semantics host-testable.
 
-`MatrixOutput` remains the mandatory physical LED gateway. It owns the NeoPixel driver and every product frame passes through the pure ES-005 `OutputLimiter`. No scene policy owns an LED driver or direct hardware-output path.
+- cold boot: Lava + Water;
+- short BOOT: exact current-seed reset;
+- long BOOT: next scene + deterministic seed increment;
+- fixture IDs never enter product cycling.
 
-## ES-003 / ES-003A touch truth boundary
+## Runtime scheduling
 
-GPIO1–GPIO7 support deliberately coarse bare-board semantics:
+Normal `esp32s3` boots `SceneRuntime`; `esp32s3_bringup` remains the hardware-isolation target.
 
-- independent `cap_a` / `cap_b` remain disabled;
-- `cap_combo` / `event_combo` represent broad common-mode contact;
-- a pinch-gated slider exposes active/position/strength during strong multi-channel contact;
-- isolated local excursions may emit explicit bounded `noise_impulse` / `noise_event` values;
-- touch noise is external recorded input, never hidden randomness.
+Current bounded schedules remain approximately:
 
-ES-007 and ES-008 preserve this boundary. Scene policies may assign different meanings to slider/combo, but no scene revives unsupported independent A/B zones. All product scenes remain complete with BOOT + IMU only.
+- IMU poll: 5 ms (~200 Hz target);
+- model tick: 16,667 us (~60 Hz target);
+- render: 16,667 us (~60 Hz target);
+- telemetry: 1 Hz.
 
-## Deterministic model and hash boundaries
+Missed deadlines are skipped rather than creating unbounded catch-up. These rates remain provisional until physical telemetry is captured.
 
-`World` remains a fixed 16×16 array of 8-byte cells; `Model` owns explicit PCG32 state, lifecycle, event/reaction budgets, deterministic hashing and normalized `InputFrame` consumption. The original `kDeterminismFixture` and its exact golden trace remain unchanged.
+## Input boundary
 
-`Model::state_hash()` serializes explicit canonical fields rather than object memory. Dynamic/product scenes include the shared dynamics schema. Lava + Water, Sodium-like + Water and Oil + Fire additionally include their respective scene schema version and active scene-action stats. ES-008 adds scene IDs 3 and 4 without renumbering older IDs.
+Pure-core `MotionInterpreter` keeps low-pass gravity separate from transient shake/motion/tap/spin and projects through the explicit board-to-matrix transform. `TouchZones` owns hardware sensing; runtime consumes only accepted semantic touch fields.
+
+Independent A/B touch zones remain disabled. Slider/combo/noise semantics are the only current bare-board touch contract, and all product scenes remain functional with BOOT + IMU alone.
+
+## Deterministic model and Moss Garden agents
+
+`World` remains 16x16 fixed storage of 8-byte cells. `Model` owns PCG32, tick, work budgets, scene objects and state hashing.
+
+Moss Garden adds a fixed three-slot mite array plus a bounded growth-energy reservoir. Two mites start active. A mite has only x, y, energy and active state. Those values and growth energy are hashed because they affect future simulation. No agent container grows dynamically.
+
+Moss biomass remains ordinary `MaterialId::kMoss` world state. Mites occupy an overlay state and therefore may consume a moss cell without replacing it with an agent material.
+
+Scene schema identities:
+
+- Lava + Water: version 2 after ES-009 composition rework;
+- Sodium-like + Water: version 2;
+- Oil + Fire: version 2;
+- Moss Garden: version 1.
+
+The original ES-004 fixture hash path remains unchanged.
 
 ## Shared dynamics boundary
 
-`DynamicsEngine` remains the sole generic transport/heat/reaction layer. It owns deterministic whole-cell gravity/buoyancy transport, material density/mobility metadata, bounded heat exchange, shared reactions, bounded reaction impulse and finite fire lifetime.
+`DynamicsEngine` remains the sole generic transport/heat/reaction layer. It owns material mobility/density, gravity/buoyancy transport, heat exchange, common reactions, bounded reaction impulse and finite fire lifetime.
 
-Scene policies may:
+Scene policy may arrange/inject bounded material, choose an ignition/start event, manage bounded ecology state, and expose counters. It may not duplicate fluid transport, chemistry propagation or fire lifetime.
 
-- choose deterministic initial arrangements;
-- inject a bounded amount of scene material at explicit scheduled/input events;
-- choose one existing material cell for an ignition/start event;
-- expose scene-local action counters.
+Moss Garden specifically reuses shared water transport. Plant growth observes nearby water and projected gravity, while mite logic is a separate bounded ecology process.
 
-They may **not** create a second fluid solver, reaction propagation loop or flame lifetime system.
+## Rendering and presentation boundary — ES-009
 
-This boundary is visible in ES-008:
+`WorldRenderer` remains the pure 16x16 -> 8x8 material projection. `scene_effects` adds two deterministic presentation operations:
 
-- Sodium-like + Water inserts/arranges reactants, while common sodium+water reaction/impulse/fire/steam logic supplies the energetic behavior;
-- Oil + Fire arranges fuel and may ignite one existing oil cell, while common oil+fire propagation, density transport and fire->smoke lifetime determine the burn.
+1. **temporal persistence**: blend the current base RGB frame with the immediately previous base frame using a scene-specific fixed integer weight;
+2. **mite overlay**: project active agent coordinates to their 8x8 positions with a high-contrast marker.
 
-## Renderer and output budget
+Presentation history is runtime/render state, not simulation state. It never affects `Model`, PRNG, reactions, movement or state hashes. Scene reset/change clears history.
 
-`WorldRenderer` maps each logical 2×2 block to one physical pixel with mass-weighted material shading plus important-minority preservation. `OutputLimiter` remains separate and computes applied brightness from requested brightness, the hard ceiling and a dimensionless aggregate-load envelope.
+Render order is deliberate:
 
-The unvalidated physical policy remains a hard 32/255 ceiling plus 4096 software load units. Product scenes use modest scene-specific requested exposure/brightness and dense frames may be reduced further by the limiter.
+```text
+WorldRenderer
+ -> temporal persistence
+ -> save smoothed base frame
+ -> reaction highlight
+ -> mite overlay (Moss Garden)
+ -> MatrixOutput
+ -> OutputLimiter
+ -> LEDs
+```
 
-`SceneRuntime` may add one deterministic sparse reaction highlight to the hottest actual steam/fire cell on a reaction tick, before output limiting. The highlight therefore cannot bypass the common physical envelope.
+Reaction flashes and mites are therefore not smeared into history and every effect remains constrained by the common physical output gateway.
+
+## Readability rework of existing scenes
+
+ES-009 changes composition rather than replacing physics:
+
+- Lava + Water: central lava source over a full-width lower basin;
+- Sodium-like + Water: paired logical reactant drops over a full-width pool;
+- Oil + Fire: broad oil layer above water with a left-originating ignition front.
+
+These macro layouts are intended to make orientation and causal evolution easier to read on 64 LEDs. CI proves deterministic distinction and prior behavioral contracts still pass; only a physical board run can prove subjective readability improved.
+
+## Renderer/output budget
+
+The central physical policy is unchanged: hard brightness ceiling 32/255 plus 4096 dimensionless aggregate load units. Scene-specific requested brightness/exposure stays below that ceiling and dense output may be reduced further.
+
+No scene, presentation helper or agent overlay owns an LED driver or bypasses `MatrixOutput`/`OutputLimiter`.
 
 ## Runtime safety
 
-- no blocking `delay()` scene logic;
-- no dynamic allocation in hot model/dynamics loops;
-- fixed-size world and dynamics scratch storage;
+- no blocking scene delays;
+- no dynamic allocation in hot model/dynamics/ecology loops;
+- fixed world, fixed agent array and fixed scratch storage;
 - bounded event/reaction work;
 - no recursive reaction processing;
-- missed schedules skip rather than backlog indefinitely;
-- missing IMU/touch are degraded modes, not crashes;
-- every physical LED frame passes through the single output budget.
+- missed schedules skip rather than backlog;
+- missing IMU/touch degrades cleanly;
+- every physical frame passes through one limiter.
 
-## Serial diagnostics — ES-008
+## Serial diagnostics
 
-Common product telemetry reports:
+Common telemetry retains scene/seed/tick/hash, measured rates, worst tick/loop times, gravity/motion and limiter state.
 
-- scene/seed/tick/state hash;
-- measured IMU/simulation/render rates;
-- worst simulation tick and main-loop durations for the reporting window;
-- normalized gravity/shake/tap state;
-- event/reaction budget use/drop counts;
-- requested/applied LED brightness, estimated load and limiter state.
+Scene lines report existing chemistry counters plus Moss Garden fields: water/moss mass, active mite count, growth energy, growth/reinforcement, mite movement/feed/starvation, rain/seed/scatter and event-budget usage.
 
-Scene-specific lines add:
-
-- Lava + Water: water/lava/crust/steam masses, movement/reaction/fracture/injection counters;
-- Sodium-like + Water: water/sodium/fire/steam masses, reaction impulse, movement and injection/burst counters;
-- Oil + Fire: water/oil/fire/smoke masses, reactions, expired-fire count, movement and refill/ignition counters.
-
-These fields make physical validation copy/pasteable, but actual visual distinction, handling response, timing and thermal conclusions still require board evidence.
+Telemetry provides evidence plumbing; visual readability, handling response and thermal safety still require physical-board observations.
