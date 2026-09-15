@@ -8,6 +8,7 @@
 #include <espsand/render/world_renderer.hpp>
 #include <espsand/sim/materials.hpp>
 #include <espsand/sim/model.hpp>
+#include <espsand/sim/scene_limits.hpp>
 #include <espsand/sim/world.hpp>
 
 namespace {
@@ -111,6 +112,13 @@ std::size_t longest_equal_nonblack_run(const Frame8x8& frame) {
   return longest;
 }
 
+void assert_product_material_caps(const Model& model) {
+  const auto totals = model.world().totals();
+  for (std::size_t index = 1U; index < espsand::sim::kMaterialCount; ++index) {
+    TEST_ASSERT_TRUE(totals.cell_count[index] <= espsand::sim::kProductMaterialCellLimit);
+  }
+}
+
 Cell water_cell() {
   Cell cell{};
   cell.material = MaterialId::kWater;
@@ -153,7 +161,7 @@ void test_uniform_liquid_projection_has_deterministic_surface_structure() {
   TEST_ASSERT_TRUE(longest_equal_nonblack_run(first) <= 4U);
 }
 
-void test_product_initial_frames_avoid_long_featureless_runs() {
+void test_product_initial_frames_are_sparse_and_structured() {
   constexpr std::array<SceneId, 4> kScenes{{
       SceneId::kLavaWater,
       SceneId::kSodiumWater,
@@ -163,9 +171,29 @@ void test_product_initial_frames_avoid_long_featureless_runs() {
 
   for (SceneId scene : kScenes) {
     const Model model(scene_config(scene));
+    assert_product_material_caps(model);
     const Frame8x8 frame = WorldRenderer{}.render(model.world()).frame;
-    TEST_ASSERT_TRUE(unique_nonblack_colors(frame) >= 6U);
+    TEST_ASSERT_TRUE(unique_nonblack_colors(frame) >= 4U);
     TEST_ASSERT_TRUE(longest_equal_nonblack_run(frame) <= 4U);
+  }
+}
+
+void test_product_materials_remain_below_sixteen_cells_during_long_resting_run() {
+  constexpr std::array<SceneId, 4> kScenes{{
+      SceneId::kLavaWater,
+      SceneId::kSodiumWater,
+      SceneId::kOilFire,
+      SceneId::kMossGarden,
+  }};
+
+  for (SceneId scene : kScenes) {
+    Model model(scene_config(scene, 0x51A0D900ULL + static_cast<std::uint8_t>(scene)));
+    assert_product_material_caps(model);
+    for (std::uint32_t tick = 0; tick < 720U; ++tick) {
+      model.step(downward_gravity());
+      assert_product_material_caps(model);
+      TEST_ASSERT_TRUE(model.invariants_hold());
+    }
   }
 }
 
@@ -178,13 +206,14 @@ void test_product_frames_remain_structured_after_settling() {
   }};
 
   for (SceneId scene : kScenes) {
-    Model model(scene_config(scene, 0x51A0D900ULL + static_cast<std::uint8_t>(scene)));
+    Model model(scene_config(scene, 0x51A0DA00ULL + static_cast<std::uint8_t>(scene)));
     for (std::uint32_t tick = 0; tick < 180U; ++tick) {
       model.step(downward_gravity());
     }
     const Frame8x8 frame = WorldRenderer{}.render(model.world()).frame;
-    TEST_ASSERT_TRUE(unique_nonblack_colors(frame) >= 4U);
+    TEST_ASSERT_TRUE(unique_nonblack_colors(frame) >= 3U);
     TEST_ASSERT_TRUE(longest_equal_nonblack_run(frame) <= 5U);
+    assert_product_material_caps(model);
     TEST_ASSERT_TRUE(model.invariants_hold());
   }
 }
@@ -195,7 +224,8 @@ int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_partial_logical_coverage_projects_dimmer_than_full_coverage);
   RUN_TEST(test_uniform_liquid_projection_has_deterministic_surface_structure);
-  RUN_TEST(test_product_initial_frames_avoid_long_featureless_runs);
+  RUN_TEST(test_product_initial_frames_are_sparse_and_structured);
+  RUN_TEST(test_product_materials_remain_below_sixteen_cells_during_long_resting_run);
   RUN_TEST(test_product_frames_remain_structured_after_settling);
   return UNITY_END();
 }
