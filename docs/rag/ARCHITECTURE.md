@@ -13,13 +13,13 @@ board drivers
   matrix / imu / button / touch / clock / serial
           ↓
 input interpretation
-  gravity / shake / tap / spin / capacitive semantics
+  low-pass gravity / shake / tap / spin / capacitive semantics
           ↓
-runtime orchestrator
-  fixed-step simulation / scene lifecycle / diagnostics
+product runtime
+  fixed-step scene simulation / lifecycle / timing telemetry
           ↓
-pure model
-  world / materials / deterministic state / bounded work seams
+pure model + scene policy
+  world / materials / deterministic state / bounded work
           ↓
 shared dynamics
   gravity transport / density / gas / heat / bounded reactions
@@ -31,7 +31,7 @@ physical output gateway
   brightness ceiling + aggregate-load limiter → RGB chain
 ```
 
-Dependencies point inward. The pure model, shared dynamics, board-independent input state machines, renderer and output limiter contain no Arduino headers, GPIO numbers or LED-driver APIs. ES-004 establishes deterministic state ownership, ES-005 establishes rendering/output budgeting, and ES-006 establishes the shared material-dynamics layer used by later hero scenes.
+Dependencies point inward. The pure model, shared dynamics, board-independent input state machines, renderer and output limiter contain no Arduino headers, GPIO numbers or LED-driver APIs. ES-004 establishes deterministic state ownership, ES-005 rendering/output budgeting, ES-006 shared material dynamics, and ES-007 the first complete product scene/runtime path.
 
 ## Current repository shape
 
@@ -41,6 +41,7 @@ src/
   main.cpp
   app/
     diagnostic_runtime.*
+    scene_runtime.*
   board/
     board_profile.hpp
     boot_button.*
@@ -53,16 +54,16 @@ src/
 lib/
   espsand_core/
     include/espsand/
-      core/
       input/
+        motion_interpreter.hpp
       io/
       render/
         output_limiter.hpp
         world_renderer.hpp
-      runtime/
       sim/
         dynamics.hpp
         input_frame.hpp
+        lava_water_scene.hpp
         materials.hpp
         model.hpp
         prng.hpp
@@ -72,7 +73,9 @@ lib/
       ...
       dynamics.cpp
       input_frame.cpp
+      lava_water_scene.cpp
       model.cpp
+      motion_interpreter.cpp
       output_limiter.cpp
       prng.cpp
       world.cpp
@@ -84,146 +87,123 @@ test/
   test_simulation_core/
   test_renderer/
   test_dynamics/
+  test_lava_water/
 docs/
   hardware/
   rag/
 ```
 
-Later material/scene modules should extend this shape without crossing the board/core seam or duplicating shared mechanics inside scene classes.
+Later scenes should extend this shape without crossing the board/core seam or duplicating shared mechanics inside scene classes.
 
-## Board-I/O runtime rates
+## Runtime scheduling — ES-007 product baseline
 
-The accepted diagnostic baseline uses independent bounded schedules:
+The normal `esp32s3` firmware now boots `SceneRuntime` directly into `kLavaWater`. `esp32s3_bringup` remains the hardware-isolation/diagnostic target.
 
-- QMI8658 configured for 1 kHz accel/gyro ODR, polled nominally at 200 Hz;
-- matrix presentation target approximately 60 Hz;
-- normal serial runtime telemetry 1 Hz;
-- BOOT sampled every main-loop iteration through a host-tested debounce/gesture state machine;
-- ES-003 touch characterization reads at most one native touch channel every 4 ms, producing a complete seven-channel scan approximately every 28 ms;
-- detailed touch telemetry is limited to approximately 10 Hz and only while the touch diagnostic page is active.
+The current product runtime uses independent bounded schedules:
 
-Touch channels are pre-initialized during startup because the pinned Arduino-ESP32 `touchRead()` implementation incurs a one-time channel-configuration delay. This prevents first-use touch initialization from creating large stalls inside the steady-state main loop.
+- QMI8658 configured for 1 kHz accel/gyro ODR and polled nominally every 5 ms (~200 Hz);
+- deterministic model target: one tick every 16,667 us (~60 Hz);
+- render target: one frame every 16,667 us (~60 Hz);
+- compact product telemetry: 1 Hz;
+- BOOT sampled every main-loop iteration;
+- touch sampling continues through the accepted ES-003A bounded scan path.
 
-Scheduling uses monotonic microsecond time and skips missed periods rather than performing unlimited catch-up work. The model exposes one deterministic `step(InputFrame)` per logical tick. Hardware poll rates must not become simulation semantics.
+Scheduling uses monotonic microsecond time and **skips missed deadlines rather than running an unbounded catch-up loop**. Hardware poll timing is not simulation state: `Model::step()` receives one sanitized `InputFrame` for each executed logical tick.
 
-Rendering is a pure projection and does not advance the model, consume model PRNG state or read wall-clock entropy. ES-006 dynamics similarly receive only normalized `InputFrame` values; raw accelerometer/gyro samples and hardware sampling jitter remain outside the model boundary.
+The 60 Hz simulation/render rates are provisional implementation targets, not claimed physical performance. `SceneRuntime` now measures `sim_hz`, `render_hz`, `imu_hz`, `max_sim_us` and `max_loop_us` so the first physical run can establish the real budget.
 
-The current diagnostic firmware does not yet execute a product scene continuously, so ES-006 cannot honestly claim a physical simulation-tick timing result. The required later on-board benchmark is explicit: run the first vertical-slice scene with fixed simulation cadence, report `sim_hz`, worst/rolling `max_tick_us`, render cadence and dropped/capped work in the 1 Hz serial telemetry, then exercise gravity/shake and reactions for at least several minutes. A tick budget must be selected from measured data rather than inferred from host tests.
+## Normalized IMU interpretation
+
+ES-007 adds pure-core `MotionInterpreter` between raw `ImuSample` and `InputFrame`.
+
+- valid acceleration is sanitized before use;
+- a low-pass gravity estimate follows credible near-1g motion slowly;
+- transient residual acceleration produces bounded `shake_energy` and `motion_energy` rather than directly steering gravity;
+- tap is a bounded one-shot candidate with a 160 ms cooldown;
+- gyro Z becomes signed normalized `spin_rate`;
+- gravity is projected through the explicit board-to-matrix transform before it reaches the model;
+- invalid/missing samples decay disturbance state rather than injecting arbitrary motion.
+
+This keeps raw IMU units, polling jitter and transient acceleration outside deterministic simulation semantics. If IMU has not yet produced a valid sample, the product scene uses a deterministic downward-gravity fallback so autonomous behavior remains visible rather than crashing or freezing.
 
 ## Hardware abstraction contracts
 
-The pure core defines narrow interfaces/types for:
+The pure core defines narrow interfaces/types for `IClock`, `IImu`, `IButton`, `ITouchZones`, `IMatrixOutput` and `IDiagnostics`. Host tests exercise board-independent policy without ESP32 headers.
 
-- `IClock` — monotonic microseconds;
-- `IImu` — timestamped raw + scaled accel/gyro and health/status;
-- `IButton` — semantic short/long events;
-- `ITouchZones` — optional normalized capacitive frame plus diagnostic/status access;
-- `IMatrixOutput` — prepared 8×8 RGB frame plus requested global brightness;
-- `IDiagnostics` — non-critical telemetry sink.
+Board adapters under `src/board/` are the only layer allowed to know concrete GPIOs or Arduino peripheral APIs. `TouchZones` owns physical sensing/normalization; `SceneRuntime` consumes only its accepted semantic frame.
 
-Host tests implement or exercise these contracts without ESP32 headers. `NullTouchZones` is the permanent clean unavailable implementation; scenes therefore never need to know whether bare-board capacitive sensing succeeded physically.
-
-Board adapters under `src/board/` are the only layer allowed to know concrete GPIOs or Arduino peripheral APIs. `TouchZones` samples candidate pins and delegates baseline/noise/common-mode/hysteresis logic to the pure touch-normalization layer.
-
-`MatrixOutput` is the mandatory physical LED gateway: it owns the NeoPixel object and every frame passes through its pure `OutputLimiter` before hardware brightness is applied. The limiter enforces both the current global development ceiling and a provisional aggregate RGB PWM-load envelope. Scene code must never instantiate or call the LED driver directly.
+`MatrixOutput` remains the mandatory physical LED gateway. It owns the NeoPixel driver and every normal product frame still passes through the pure ES-005 `OutputLimiter`. Neither `LavaWaterScene` nor `SceneRuntime` has a second hardware-output path.
 
 ## ES-003 / ES-003A touch truth boundary
 
-GPIO1–GPIO7 are validated safe exposed native-touch candidates on the tested board. Physical characterization established a deliberately coarse product semantic:
+GPIO1–GPIO7 support deliberately coarse bare-board semantics:
 
-- `cap_a` and `cap_b` remain disabled;
-- `cap_combo` and its gated event represent broad common-mode edge contact;
-- a pinch-gated coarse slider exports active/position/strength only during strong multi-channel contact;
-- isolated fast local excursions may export bounded `noise_impulse` / `noise_event` values;
-- the noise signal is explicit external input, never model seed material or hidden randomness.
+- independent `cap_a` / `cap_b` remain disabled;
+- `cap_combo` / `event_combo` represent broad common-mode contact;
+- a pinch-gated slider exposes active/position/strength during strong multi-channel contact;
+- isolated local excursions may emit explicit bounded `noise_impulse` / `noise_event` values;
+- touch noise is external recorded input, never hidden randomness.
 
-Missing or noisy capacitive sensing still degrades cleanly; BOOT + IMU remain sufficient.
+ES-007 respects this boundary: slider position can inject bounded lava; combo requests one bounded lava/water contact pulse; disturbance/noise can contribute to crust remixing. The scene does not revive unsupported A/B zones and remains fully usable with BOOT + IMU only.
 
 ## ES-004 deterministic model
 
-The model substrate lives under `lib/espsand_core/` and is ordinary C++17 with no Arduino/ESP dependency.
+`World` remains a fixed 16×16 array of 8-byte cells; `Model` owns explicit PCG32 state, lifecycle, event/reaction budgets, deterministic hashing and normalized `InputFrame` consumption. The original `kDeterminismFixture` and its exact golden trace remain unchanged.
 
-- `World` is a fixed 16×16, 256-cell, row-major array.
-- `Cell` is a fixed 8-byte value containing material ID, mass/fill, signed motion proxies, temperature/energy, material-specific auxiliary state and flags.
-- material identity and category metadata are centralized in one versioned registry with stable numeric IDs;
-- `Model` owns a PCG32 PRNG. Its seed, state and stream increment are explicit deterministic state; core logic must not use `rand()`, timestamps or platform entropy;
-- `InputFrame` is the normalized, hardware-independent input for one logical tick;
-- `Model::init`, `reset`, `reseed` and `step` provide the lifecycle seam used by later scenes/runtime work;
-- event and reaction `WorkBudget` instances provide fixed, saturating per-tick accounting seams.
+`Model::state_hash()` serializes explicit canonical fields rather than object memory. Dynamics/scene schema discriminators are included only for scenes that depend on those contracts, so unrelated foundational traces do not drift merely because a later scene exists.
 
-The original `kDeterminismFixture` remains unchanged as a foundational PRNG/input/replay fixture. The same seed, reset/initial state and `InputFrame` sequence must replay identically. External touch/noise irregularity affects a run only through recorded `InputFrame` values and does not perturb PRNG state unless simulation code explicitly chooses to consume the PRNG for a defined rule.
+## ES-005 renderer and output budget
 
-### State hash contract
+`WorldRenderer` maps each logical 2×2 block to one physical pixel with mass-weighted material shading plus important-minority preservation. `OutputLimiter` remains separate and computes applied brightness from requested brightness, the hard ceiling and a dimensionless aggregate-load envelope.
 
-`Model::state_hash()` is a stable FNV-1a 64-bit regression/replay identity over explicit, canonical little-endian fields. It covers the hash/material/cell schema versions, dimensions, scene/configuration, seed, tick, PRNG state, fixture state, budget counters and every cell in deterministic row-major order.
-
-The hash deliberately does **not** serialize raw struct memory, so padding and host ABI do not define replay identity. It is not a cryptographic integrity or security mechanism. ES-006 adds a dynamics-schema discriminator only for `kDynamicsFixture`; the ES-004 fixture retains its existing exact hashes.
-
-## ES-005 deterministic renderer and output budget
-
-`WorldRenderer` maps each fixed 2×2 logical block to one physical pixel. Beauty rendering combines mass-weighted material colour with a deterministic high-importance accent so small fire/lava/steam/tracer/biomass features are not erased merely because another material occupies most of the block.
-
-Material shading is centralized. Positive `Cell::temperature` contributes bounded warm logical emission; tracer/moss `aux` values provide bounded palette modulation. Integer Q8 exposure and rational tone mapping produce an 8-bit frame without hidden random dithering or floating-point replay dependencies.
-
-The renderer also exposes deterministic material-ID, temperature and mass diagnostic projections. Invalid material IDs use a safe fallback and are counted rather than indexing outside the style table.
-
-`OutputLimiter` is deliberately separate from simulation and material shading. It computes the applied global brightness from the requested value, the hard ceiling and a dimensionless aggregate RGB PWM-load envelope. Its default load value is a conservative software policy, not a milliamps/temperature claim.
+The current unvalidated physical policy remains a hard 32/255 ceiling plus 4096 software load units. ES-007 currently requests 28/255; the limiter may lower that further for dense frames.
 
 ## ES-006 shared dynamics
 
-`DynamicsEngine` is a stateless pure-core service operating on `World`, one normalized `InputFrame`, an explicit tick index and the model-owned work budgets.
+`DynamicsEngine` remains the sole generic transport/heat/reaction layer. It owns deterministic whole-cell gravity/buoyancy transport, material density/mobility metadata, bounded heat exchange, shared reactions and finite fire lifetime. Scenes may arrange/inject materials and interpret inputs, but they must not reimplement lava/water chemistry or fluid transport.
 
-- movement uses fixed scans and fixed-size claim arrays; one cell cannot participate in two transport exchanges during a tick;
-- density, mobility, gas/solid classification, thermal conductivity and ambient loss live in one centralized material-dynamics table;
-- diagonal normalized gravity is converted to a deterministic cardinal duty sequence rather than continuous floating-point positions;
-- shake/motion/tap/spin increase bounded disturbance/mobility while low-frequency gravity direction remains separate;
-- pairwise heat exchange accumulates into a fixed 256-element delta array before application;
-- three centralized adjacency reaction primitives cover the shared mechanics required by later lava/water, sodium-like/water and oil/fire scenes;
-- reactions consume `WorkBudget` units, never recurse, and optional local reaction impulses consume event budget;
-- finite fire lifetime is generic shared material behavior, not scene animation.
+## ES-007 Lava + Water scene/runtime
 
-`kDynamicsFixture` exists only to test this shared layer under the full `Model::step()`/hash lifecycle. It is not a hero scene.
+`LavaWaterScene` is deterministic scene policy layered around ES-006:
 
-## Scene lifecycle seam
+- initializes a large water reservoir, a hot lava body and a seeded contact point;
+- periodically injects bounded lava and slower water replenishment so the scene has an autonomous arc;
+- maps strong motion to bounded mass-preserving relocation of existing crust cells;
+- maps slider and combo touch semantics to bounded material injection only;
+- consumes the model-owned PRNG for scene placement/injection choices, so fixed-seed replay remains exact;
+- adds `kLavaWaterSceneSchemaVersion` to Lava + Water hash identity.
 
-A product scene should primarily define:
+`SceneRuntime` composes normalized input, executes model ticks, renders beauty output, adds a deterministic sparse highlight to the hottest reaction-derived steam cell, presents through `MatrixOutput`, and emits timing/state/work/output telemetry.
 
-- deterministic world initialization from model configuration/seed;
-- enabled material injection and scene-local scripted events;
-- mapping of normalized `InputFrame` fields/events to bounded scene actions;
-- reset/reseed policy;
-- optional palette/render hints outside the shared material rules.
+Lifecycle while only one product scene exists:
 
-BOOT-derived `InputFrame::boot_event` carries semantic lifecycle intent, but the generic model does not silently reset itself from inside `step()`. The runtime/scene controller owns reset/reseed/scene-advance policy and calls the explicit lifecycle methods.
-
-Scenes must use the ES-006 shared transport, thermal and reaction mechanisms. If a later vertical slice exposes a genuine deficiency, fix the shared layer and add a regression test rather than hiding bespoke physics in scene code.
+- short BOOT: exact reset of the current seed;
+- long BOOT: “next scene” wraps to Lava + Water with seed+1 and logs that one-scene wrap explicitly;
+- ES-008 is expected to replace this temporary wrap with real scene advance.
 
 ## Runtime safety
 
-- No blocking `delay()`-style scene logic.
-- No dynamic allocation in hot per-tick loops unless profiling proves it harmless and bounded.
-- Frame-critical world/model/dynamics scratch storage is fixed-size.
-- Cap particles/agents/events explicitly.
-- Reaction chains participate in bounded per-tick work and never recurse.
-- Watchdog friendliness is a design requirement.
-- Diagnostics should expose dropped/capped work rather than silently hiding overload.
-- Missing IMU is a degraded mode, not a crash condition.
-- Missing/noisy capacitive input is an unavailable optional capability, not a crash or scene dependency.
-- Every physical LED frame passes through the single centralized ES-005 output budget.
+- no blocking `delay()` scene logic;
+- no dynamic allocation in hot model/dynamics loops;
+- fixed-size world and dynamics scratch storage;
+- bounded event/reaction work;
+- no recursive reaction processing;
+- missed schedules skip rather than backlog indefinitely;
+- missing IMU/touch are degraded modes, not crashes;
+- every physical LED frame passes through the single output budget.
 
 ## Serial diagnostics
 
-Development output should be machine-readable enough to support capture. Include as systems become active:
+The product runtime now reports at ~1 Hz:
 
-- firmware/runtime identity;
-- current diagnostic/scene mode;
-- measured rates and update-time maxima;
-- IMU health, detected I2C address and scaled vectors;
-- normalized gravity/confidence and disturbance energy once scene runtime is active;
-- detected button/tap/shake/touch events;
-- touch raw/baseline/noise/normalized/common-mode values during characterization;
-- model seed/state identity and reaction/event overflow counters;
-- transport/reaction counts and simulation tick maxima during physical profiling;
-- current global brightness/power limiter state.
+- scene/seed/tick/state hash;
+- measured IMU/simulation/render rates;
+- worst simulation tick and main-loop durations for the reporting window;
+- normalized gravity/shake/tap state;
+- water/lava/crust/steam masses;
+- movement/reaction/fracture/injection counters;
+- event/reaction budget use/drop counts;
+- renderer minority-preservation count;
+- requested/applied LED brightness, estimated load and limiter state.
 
-Human-readable compact lines are sufficient for v0; a rigid binary protocol is unnecessary.
+These fields make physical ES-007 validation copy/pasteable, but actual orientation, visual quality, timing and thermal conclusions require board evidence.
