@@ -23,12 +23,10 @@ std::uint32_t Pcg32::next_u32() noexcept {
   const std::uint64_t old_state = state_;
   state_ = old_state * kPcgMultiplier + increment_;
 
-  const auto xorshifted =
-      static_cast<std::uint32_t>(((old_state >> 18U) ^ old_state) >> 27U);
+  const auto xorshifted = static_cast<std::uint32_t>(((old_state >> 18U) ^ old_state) >> 27U);
   const auto rotation = static_cast<std::uint32_t>(old_state >> 59U);
 
-  return (xorshifted >> rotation) |
-         (xorshifted << ((0U - rotation) & 31U));
+  return (xorshifted >> rotation) | (xorshifted << ((0U - rotation) & 31U));
 }
 
 std::uint32_t Pcg32::bounded(std::uint32_t bound) noexcept {

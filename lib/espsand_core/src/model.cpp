@@ -206,8 +206,7 @@ void Model::initialize_fixture() noexcept {
       Cell wall{};
       wall.material = MaterialId::kWall;
       wall.mass = 255;
-      static_cast<void>(
-          world_.set_cell(static_cast<int>(x), static_cast<int>(y), wall));
+      static_cast<void>(world_.set_cell(static_cast<int>(x), static_cast<int>(y), wall));
     }
   }
 
@@ -227,8 +226,7 @@ void Model::initialize_fixture() noexcept {
         fixture_.marker_x == maximum ? 1U : static_cast<std::uint8_t>(fixture_.marker_x + 1U);
   }
 
-  static_cast<void>(
-      world_.set_cell(fixture_.marker_x, fixture_.marker_y, fixture_marker_cell()));
+  static_cast<void>(world_.set_cell(fixture_.marker_x, fixture_.marker_y, fixture_marker_cell()));
 }
 
 void Model::relocate_fixture_marker() noexcept {
@@ -245,8 +243,7 @@ void Model::relocate_fixture_marker() noexcept {
         fixture_.marker_x == maximum ? 1U : static_cast<std::uint8_t>(fixture_.marker_x + 1U);
   }
 
-  static_cast<void>(
-      world_.set_cell(fixture_.marker_x, fixture_.marker_y, fixture_marker_cell()));
+  static_cast<void>(world_.set_cell(fixture_.marker_x, fixture_.marker_y, fixture_marker_cell()));
 }
 
 } // namespace espsand::sim

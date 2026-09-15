@@ -105,9 +105,8 @@ void test_world_capacity_order_and_bounds_are_fixed() {
   moss.material = MaterialId::kMoss;
   moss.mass = 7;
   TEST_ASSERT_TRUE(world.set_cell(1, 0, moss));
-  TEST_ASSERT_EQUAL_UINT8(
-      static_cast<std::uint8_t>(MaterialId::kMoss),
-      static_cast<std::uint8_t>(world.cells()[1].material));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(MaterialId::kMoss),
+                          static_cast<std::uint8_t>(world.cells()[1].material));
   TEST_ASSERT_FALSE(world.set_cell(-1, 0, moss));
   TEST_ASSERT_FALSE(world.set_cell(16, 0, moss));
 }
@@ -176,6 +175,7 @@ void test_work_budget_has_atomic_predictable_saturation() {
 }
 
 void test_prng_sequence_is_locked() {
+  // clang-format off
   constexpr std::uint32_t expected[] = {
       2707161783U,
       2068313097U,
@@ -184,6 +184,7 @@ void test_prng_sequence_is_locked() {
       3215226955U,
       3421331566U,
   };
+  // clang-format on
 
   Pcg32 prng(42U);
   TEST_ASSERT_EQUAL_UINT64(109U, prng.increment());
@@ -214,6 +215,7 @@ void test_same_seed_and_inputs_replay_identically() {
 }
 
 void test_golden_state_trace_is_locked() {
+  // clang-format off
   constexpr std::uint64_t expected[] = {
       0x4943A6C732CA020DULL,
       0x75A4B3C9249EF546ULL,
@@ -221,6 +223,7 @@ void test_golden_state_trace_is_locked() {
       0xB411D621F3D3F1C6ULL,
       0x8F0F30D22E87FB14ULL,
   };
+  // clang-format on
 
   ModelConfig config{};
   config.seed = 0x0123456789ABCDEFULL;
@@ -372,9 +375,8 @@ void test_input_sanitization_clamps_malformed_values() {
   TEST_ASSERT_FLOAT_WITHIN(0.0001F, 0.5F, output.slider_position);
   TEST_ASSERT_FLOAT_WITHIN(0.0001F, 0.0F, output.slider_strength);
   TEST_ASSERT_FLOAT_WITHIN(0.0001F, 0.0F, output.noise_impulse);
-  TEST_ASSERT_EQUAL_UINT8(
-      static_cast<std::uint8_t>(BootEvent::kNone),
-      static_cast<std::uint8_t>(output.boot_event));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(BootEvent::kNone),
+                          static_cast<std::uint8_t>(output.boot_event));
 }
 
 void test_randomized_stress_preserves_replay_and_invariants() {

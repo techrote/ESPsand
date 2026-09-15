@@ -34,8 +34,7 @@ public:
 
     const std::uint32_t dropped = static_cast<std::uint32_t>(stats_.dropped) + units;
     const auto maximum = std::numeric_limits<std::uint16_t>::max();
-    stats_.dropped =
-        dropped > maximum ? maximum : static_cast<std::uint16_t>(dropped);
+    stats_.dropped = dropped > maximum ? maximum : static_cast<std::uint16_t>(dropped);
     return false;
   }
 
