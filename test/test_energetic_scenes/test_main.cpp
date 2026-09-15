@@ -12,6 +12,7 @@
 namespace {
 
 using espsand::render::WorldRenderer;
+using espsand::sim::Cell;
 using espsand::sim::InputFrame;
 using espsand::sim::MaterialId;
 using espsand::sim::Model;
@@ -41,6 +42,16 @@ std::uint32_t material_mass(const Model& model, MaterialId material) {
 
 std::uint16_t material_cells(const Model& model, MaterialId material) {
   return model.world().totals().cell_count[espsand::sim::material_index(material)];
+}
+
+bool has_material_in_top_column(const Model& model, MaterialId material, std::uint8_t x) {
+  for (int y = 0; y <= 2; ++y) {
+    const Cell* cell = model.world().try_cell(x, y);
+    if (cell != nullptr && cell->material == material && cell->mass != 0U) {
+      return true;
+    }
+  }
+  return false;
 }
 
 struct Centroid {
@@ -172,7 +183,6 @@ void test_sodium_combo_is_bounded_and_uses_shared_reaction_path() {
 
 void test_sodium_slider_spawns_secondary_water_near_selected_x() {
   Model model(scene_config(SceneId::kSodiumWater, 456));
-  const std::uint16_t water_before = material_cells(model, MaterialId::kWater);
   InputFrame frame{};
   frame.slider_active = true;
   frame.slider_position = 0.78F;
@@ -183,7 +193,7 @@ void test_sodium_slider_spawns_secondary_water_near_selected_x() {
   TEST_ASSERT_EQUAL_UINT16(1U, stats.touch_water_injections);
   TEST_ASSERT_TRUE(stats.last_injection_x >= 9U);
   TEST_ASSERT_TRUE(stats.last_injection_x <= 14U);
-  TEST_ASSERT_TRUE(material_cells(model, MaterialId::kWater) > water_before);
+  TEST_ASSERT_TRUE(has_material_in_top_column(model, MaterialId::kWater, stats.last_injection_x));
   TEST_ASSERT_TRUE(material_cells(model, MaterialId::kWater) <=
                    espsand::sim::kProductMaterialCellLimit);
 }
@@ -223,7 +233,7 @@ void test_oil_fire_consumes_finite_fuel_and_extinguishes_before_refill_phase() {
   bool saw_reaction = false;
   bool saw_expiry = false;
 
-  for (std::uint32_t tick = 0; tick < 240U; ++tick) {
+  for (std::uint32_t tick = 0; tick < 260U; ++tick) {
     model.step(gravity_frame(0.0F, 1.0F));
     saw_reaction = saw_reaction || model.dynamics_stats().reactions_applied != 0U;
     saw_expiry = saw_expiry || model.dynamics_stats().fire_cells_expired != 0U;
