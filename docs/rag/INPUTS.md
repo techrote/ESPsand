@@ -37,9 +37,11 @@ The simulation-side contract provides:
 
 Hardware/input conditioning owns thresholds, hysteresis and cooldowns so one physical action does not emit an unbounded event stream.
 
-Scenes may later interpret these differently. Examples include slosh/fracture, fuel redistribution, scattering seeds/agents or mixing tracer concentration.
+ES-006 gives these fields shared mechanics meaning without coupling them to raw hardware. Low-frequency gravity chooses the transport direction. `shake_energy`, `motion_energy`, `tap_impulse` and absolute spin only raise a bounded transport-disturbance/mobility term; they do not overwrite the gravity vector. Signed `spin_rate` biases deterministic lateral-relaxation direction. This separation is host-tested so a shake cannot silently become a new gravity direction.
 
-## ES-004 `InputFrame` contract
+Hero scenes may later layer additional bounded semantics such as crust fracture or injection on top of the same normalized fields.
+
+## `InputFrame` contract
 
 `espsand::sim::InputFrame` is a hardware-independent value constructed once per logical tick. It contains:
 
@@ -52,7 +54,7 @@ Scenes may later interpret these differently. Examples include slosh/fracture, f
 
 Continuous normalized scalar fields are sanitized to bounded ranges at the model boundary. Gravity components and signed spin are clamped to -1..1; the other continuous fields are clamped to 0..1. Non-finite values are replaced by neutral defaults, and an invalid enum value becomes `kNone`. This is a defensive replay boundary, not hardware filtering.
 
-ES-004 deliberately does not prescribe how raw IMU/touch timing becomes these values; later runtime conditioning may evolve independently as long as it produces the same normalized simulation contract.
+The runtime may evolve its raw-IMU conditioning independently as long as it produces this normalized contract. ES-006 deliberately consumes only this contract. Sensor sample timing, raw acceleration units and raw gyro values are not visible to `DynamicsEngine`.
 
 ## Capacitive edge input — tested board result
 
@@ -81,7 +83,7 @@ The slider is intentionally a coarse direct control rather than a precision touc
 
 `noise_impulse` is an explicit external input and is **not** seed material, PRNG state or a hidden entropy path. If a live run observes hardware irregularity, that value is recorded in the tick's `InputFrame`. Replaying the same frames reproduces the same result.
 
-The ES-004 determinism fixture explicitly verifies that cap/noise fields can alter modeled fixture state without changing PCG32 state. A future simulation rule may of course choose to consume the model PRNG in response to an event, but that draw must be explicit program behavior and therefore replayable.
+The ES-004 determinism fixture explicitly verifies that cap/noise fields can alter modeled fixture state without changing PCG32 state. ES-006 likewise introduces no hardware-entropy path: its transport mobility schedule is deterministic from tick/cell state, and any future PRNG draw must come from the model-owned PCG32 through an explicit rule.
 
 This is not pressure sensing. Coupling can vary with contact area, grip, moisture, grounding and other environmental factors.
 
@@ -115,3 +117,5 @@ Baseline adapts slowly when idle and is frozen/slowed during strong touch. Commo
 ## Event injection and replay
 
 Scenes consume one normalized `InputFrame` per fixed model tick. Host tests can construct these frames directly without hardware. Replay identity is defined by seed/configuration, reset/initial state, tick count and the ordered `InputFrame` sequence—not by wall-clock timing or sensor polling jitter.
+
+ES-006 tests repeated multi-axis gravity/shake/tap/spin sequences through the full `Model::step()` path and requires byte-identical state-hash replay between duplicate models.

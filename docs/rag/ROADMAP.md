@@ -32,15 +32,27 @@ ES-005 establishes deterministic 2×2 supersampled aggregation to 8×8, importan
 
 The current board policy remains intentionally provisional: 32/255 hard brightness ceiling plus a 4096-unit dimensionless aggregate frame-load envelope. These are development limits, not validated current/temperature ratings; sustained physical soak evidence is still required before raising or certifying them.
 
-### B3. Transport, heat, gas and reaction engine
+### B3. Transport, heat, gas and reaction engine — ES-006 baseline
 
-Add gravity-directed transport, density/buoyancy tendency, liquid viscosity differences, bounded momentum proxy if beneficial, gas movement, heat exchange and centralized bounded reactions. Integrate normalized IMU gravity and motion-energy inputs through the ES-004 `InputFrame` contract and render through the ES-005 output path.
+ES-006 establishes the shared deterministic material-dynamics layer used by later scenes:
+
+- gravity-directed and buoyant whole-cell transport with exact tracked-mass conservation;
+- centralized density ordering and distinct water/oil/lava mobility;
+- deterministic lateral liquid relaxation and gas dispersion with bounded motion disturbance;
+- compact recent-motion proxies rather than a full velocity field;
+- fixed-size pairwise thermal exchange plus material ambient loss;
+- centralized bounded lava-water, sodium-like-water and oil-fire reaction primitives;
+- finite shared fire lifetime;
+- hard reaction/event work budgets with no recursive reaction chains;
+- a non-product dynamics fixture and randomized conservation/replay stress tests.
+
+Raw IMU data still remains outside the model. ES-006 consumes only the normalized ES-004 `InputFrame` gravity/shake/tap/motion/spin contract and renders later scene state through the ES-005 output path.
 
 ## Milestone C — Hero vertical slices
 
 ### C1. Lava + Water
 
-First complete scene proving the stack: liquid contact, cooling/crust, steam/gas, heat glow, tilt, shake/tap and optional capacitive injection.
+First complete scene proving the stack: liquid contact, cooling/crust, steam/gas, heat glow, tilt, shake/tap and optional capacitive injection. This issue is also the first physical timing/scene-loop benchmark for the ES-006 dynamics kernel; shared deficiencies should be fixed in the core rather than hidden in scene code.
 
 ### C2. Sodium-like + Water and Oil + Fire
 
@@ -99,6 +111,7 @@ Every milestone preserves:
 - hardware abstraction seams;
 - button + IMU sufficiency even without touch;
 - bounded per-tick work;
+- exact tracked-mass conservation for transport unless an explicitly documented reaction later changes that contract;
 - explicit distinction between automated checks and physical-board validation.
 
 ## Deferred post-v0 directions

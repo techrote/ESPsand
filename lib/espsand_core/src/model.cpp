@@ -70,6 +70,28 @@ Cell fixture_marker_cell() noexcept {
   return cell;
 }
 
+Cell material_cell(MaterialId material, std::uint8_t mass, std::int16_t temperature = 0,
+                   std::uint8_t aux = 0) noexcept {
+  Cell cell{};
+  cell.material = material;
+  cell.mass = mass;
+  cell.temperature = temperature;
+  cell.aux = aux;
+  return cell;
+}
+
+void add_border(World& world) noexcept {
+  for (std::size_t y = 0; y < kWorldHeight; ++y) {
+    for (std::size_t x = 0; x < kWorldWidth; ++x) {
+      if (x != 0 && y != 0 && x + 1U != kWorldWidth && y + 1U != kWorldHeight) {
+        continue;
+      }
+      static_cast<void>(world.set_cell(static_cast<int>(x), static_cast<int>(y),
+                                       material_cell(MaterialId::kWall, 255)));
+    }
+  }
+}
+
 } // namespace
 
 Model::Model() noexcept {
@@ -82,8 +104,13 @@ Model::Model(const ModelConfig& config) noexcept {
 
 void Model::init(const ModelConfig& config) noexcept {
   config_ = config;
-  if (config_.scene != SceneId::kDeterminismFixture) {
+  switch (config_.scene) {
+  case SceneId::kDeterminismFixture:
+  case SceneId::kDynamicsFixture:
+    break;
+  default:
     config_.scene = SceneId::kDeterminismFixture;
+    break;
   }
   reset();
 }
@@ -95,7 +122,13 @@ void Model::reset() noexcept {
   reaction_budget_.reset(config_.reaction_budget);
   world_.clear();
   fixture_ = FixtureStateSnapshot{};
-  initialize_fixture();
+  dynamics_stats_ = DynamicsStats{};
+
+  if (config_.scene == SceneId::kDynamicsFixture) {
+    initialize_dynamics_fixture();
+  } else {
+    initialize_fixture();
+  }
 }
 
 void Model::reseed(std::uint64_t seed) noexcept {
@@ -108,27 +141,12 @@ void Model::step(const InputFrame& input) noexcept {
 
   event_budget_.reset(config_.event_budget);
   reaction_budget_.reset(config_.reaction_budget);
+  dynamics_stats_ = DynamicsStats{};
 
-  fixture_.cap_combo_q8 = unit_to_q8(frame.cap_combo);
-  if (frame.slider_active) {
-    fixture_.slider_position_q8 = unit_to_q8(frame.slider_position);
-    fixture_.slider_strength_q8 = unit_to_q8(frame.slider_strength);
-  }
-
-  if (frame.cap_combo_event && event_budget_.try_consume()) {
-    const std::uint16_t impulse =
-        static_cast<std::uint16_t>(fixture_.cap_combo_q8 == 0 ? 1 : fixture_.cap_combo_q8);
-    fixture_.external_impulse = saturating_add(fixture_.external_impulse, impulse);
-  }
-
-  if (frame.noise_event && frame.noise_impulse > 0.0F && event_budget_.try_consume()) {
-    const std::uint8_t quantized = unit_to_q8(frame.noise_impulse);
-    const std::uint16_t impulse = static_cast<std::uint16_t>(quantized == 0 ? 1 : quantized);
-    fixture_.external_impulse = saturating_add(fixture_.external_impulse, impulse);
-  }
-
-  if (frame.tap_impulse >= 0.5F && event_budget_.try_consume()) {
-    relocate_fixture_marker();
+  if (config_.scene == SceneId::kDynamicsFixture) {
+    dynamics_stats_ = dynamics_engine_.step(world_, frame, tick_, event_budget_, reaction_budget_);
+  } else {
+    step_determinism_fixture(frame);
   }
 
   ++tick_;
@@ -142,9 +160,17 @@ FixtureStateSnapshot Model::fixture_state() const noexcept {
   return fixture_;
 }
 
+DynamicsStats Model::dynamics_stats() const noexcept {
+  return dynamics_stats_;
+}
+
 bool Model::invariants_hold() const noexcept {
   if (!world_.invariants_hold()) {
     return false;
+  }
+
+  if (config_.scene == SceneId::kDynamicsFixture) {
+    return true;
   }
 
   if (!world_.in_bounds(fixture_.marker_x, fixture_.marker_y)) {
@@ -165,6 +191,9 @@ std::uint64_t Model::state_hash() const noexcept {
   hasher.add_u16(static_cast<std::uint16_t>(kWorldWidth));
   hasher.add_u16(static_cast<std::uint16_t>(kWorldHeight));
   hasher.add_u8(static_cast<std::uint8_t>(config_.scene));
+  if (config_.scene == SceneId::kDynamicsFixture) {
+    hasher.add_u32(kDynamicsSchemaVersion);
+  }
 
   hasher.add_u64(config_.seed);
   hasher.add_u64(tick_);
@@ -197,18 +226,7 @@ std::uint64_t Model::state_hash() const noexcept {
 }
 
 void Model::initialize_fixture() noexcept {
-  for (std::size_t y = 0; y < kWorldHeight; ++y) {
-    for (std::size_t x = 0; x < kWorldWidth; ++x) {
-      if (x != 0 && y != 0 && x + 1U != kWorldWidth && y + 1U != kWorldHeight) {
-        continue;
-      }
-
-      Cell wall{};
-      wall.material = MaterialId::kWall;
-      wall.mass = 255;
-      static_cast<void>(world_.set_cell(static_cast<int>(x), static_cast<int>(y), wall));
-    }
-  }
+  add_border(world_);
 
   Cell water{};
   water.material = MaterialId::kWater;
@@ -227,6 +245,52 @@ void Model::initialize_fixture() noexcept {
   }
 
   static_cast<void>(world_.set_cell(fixture_.marker_x, fixture_.marker_y, fixture_marker_cell()));
+}
+
+void Model::initialize_dynamics_fixture() noexcept {
+  add_border(world_);
+
+  static_cast<void>(world_.set_cell(5, 4, material_cell(MaterialId::kWater, 220, 40)));
+  static_cast<void>(world_.set_cell(5, 5, material_cell(MaterialId::kOil, 200, 20)));
+  static_cast<void>(world_.set_cell(4, 5, material_cell(MaterialId::kCrust, 255)));
+  static_cast<void>(world_.set_cell(6, 5, material_cell(MaterialId::kCrust, 255)));
+  static_cast<void>(world_.set_cell(5, 6, material_cell(MaterialId::kCrust, 255)));
+
+  static_cast<void>(world_.set_cell(3, 10, material_cell(MaterialId::kWater, 180, 80)));
+  static_cast<void>(world_.set_cell(3, 11, material_cell(MaterialId::kSteam, 120, 700)));
+
+  static_cast<void>(world_.set_cell(10, 9, material_cell(MaterialId::kLava, 240, 1400)));
+  static_cast<void>(world_.set_cell(11, 9, material_cell(MaterialId::kWater, 220, 30)));
+
+  static_cast<void>(world_.set_cell(9, 12, material_cell(MaterialId::kSodiumLike, 96, 100)));
+  static_cast<void>(world_.set_cell(10, 12, material_cell(MaterialId::kWater, 180, 20)));
+
+  static_cast<void>(world_.set_cell(12, 4, material_cell(MaterialId::kOil, 180, 30)));
+  static_cast<void>(world_.set_cell(13, 4, material_cell(MaterialId::kFire, 80, 1000, 10)));
+}
+
+void Model::step_determinism_fixture(const InputFrame& frame) noexcept {
+  fixture_.cap_combo_q8 = unit_to_q8(frame.cap_combo);
+  if (frame.slider_active) {
+    fixture_.slider_position_q8 = unit_to_q8(frame.slider_position);
+    fixture_.slider_strength_q8 = unit_to_q8(frame.slider_strength);
+  }
+
+  if (frame.cap_combo_event && event_budget_.try_consume()) {
+    const std::uint16_t impulse =
+        static_cast<std::uint16_t>(fixture_.cap_combo_q8 == 0 ? 1 : fixture_.cap_combo_q8);
+    fixture_.external_impulse = saturating_add(fixture_.external_impulse, impulse);
+  }
+
+  if (frame.noise_event && frame.noise_impulse > 0.0F && event_budget_.try_consume()) {
+    const std::uint8_t quantized = unit_to_q8(frame.noise_impulse);
+    const std::uint16_t impulse = static_cast<std::uint16_t>(quantized == 0 ? 1 : quantized);
+    fixture_.external_impulse = saturating_add(fixture_.external_impulse, impulse);
+  }
+
+  if (frame.tap_impulse >= 0.5F && event_budget_.try_consume()) {
+    relocate_fixture_marker();
+  }
 }
 
 void Model::relocate_fixture_marker() noexcept {
