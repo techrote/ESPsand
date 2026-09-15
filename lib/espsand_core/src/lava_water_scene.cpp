@@ -5,21 +5,18 @@
 #include <cstddef>
 #include <cstdint>
 
+#include <espsand/sim/scene_limits.hpp>
+
 namespace espsand::sim {
 namespace {
 
-constexpr std::uint64_t kAutoLavaPeriodTicks = 48;
-constexpr std::uint64_t kAutoWaterPeriodTicks = 120;
-constexpr std::uint64_t kTouchLavaPeriodTicks = 12;
+constexpr std::uint64_t kAutoLavaPeriodTicks = 72;
+constexpr std::uint64_t kAutoWaterPeriodTicks = 180;
+constexpr std::uint64_t kTouchWaterPeriodTicks = 12;
 constexpr std::uint8_t kLavaMass = 232;
-constexpr std::uint8_t kWaterMass = 220;
+constexpr std::uint8_t kWaterMass = 190;
 constexpr std::int16_t kLavaTemperature = 1700;
 constexpr std::int16_t kWaterTemperature = 24;
-// clang-format off
-constexpr std::array<int, kWorldWidth> kWaterSurface{{
-    13, 12, 13, 11, 12, 10, 11, 12, 10, 11, 12, 11, 13, 12, 13, 12,
-}};
-// clang-format on
 
 Cell material_cell(MaterialId material, std::uint8_t mass, std::int16_t temperature = 0) noexcept {
   Cell cell{};
@@ -27,18 +24,6 @@ Cell material_cell(MaterialId material, std::uint8_t mass, std::int16_t temperat
   cell.mass = mass;
   cell.temperature = temperature;
   return cell;
-}
-
-Cell water_cell_for(int x, int y) noexcept {
-  const int surface = kWaterSurface[static_cast<std::size_t>(x)];
-  const int depth = y - surface;
-  std::uint8_t mass = kWaterMass;
-  if (depth == 0) {
-    mass = static_cast<std::uint8_t>(126 + (x % 3) * 12);
-  } else if (depth == 1) {
-    mass = static_cast<std::uint8_t>(176 + (x % 2) * 14);
-  }
-  return material_cell(MaterialId::kWater, mass, kWaterTemperature);
 }
 
 bool can_inject_into(const Cell& cell) noexcept {
@@ -62,8 +47,11 @@ std::uint8_t slider_to_x(float position) noexcept {
 }
 
 bool inject_lava_vent(World& world, Pcg32& prng, std::uint8_t& injected_x) noexcept {
+  if (!can_add_product_material(world, MaterialId::kLava)) {
+    return false;
+  }
   constexpr std::array<int, 8> kVentXs{{7, 8, 6, 9, 5, 10, 4, 11}};
-  const std::uint32_t start = prng.bounded(4U);
+  const std::uint32_t start = prng.bounded(kVentXs.size());
   const Cell lava = material_cell(MaterialId::kLava, kLavaMass, kLavaTemperature);
   for (std::uint32_t offset = 0; offset < kVentXs.size(); ++offset) {
     const int x = kVentXs[(start + offset) % kVentXs.size()];
@@ -76,11 +64,14 @@ bool inject_lava_vent(World& world, Pcg32& prng, std::uint8_t& injected_x) noexc
 }
 
 bool inject_water_rivulet(World& world, Pcg32& prng, std::uint8_t& injected_x) noexcept {
-  constexpr std::array<int, 8> kInletXs{{1, 14, 2, 13, 0, 15, 3, 12}};
+  if (!can_add_product_material(world, MaterialId::kWater)) {
+    return false;
+  }
+  constexpr std::array<int, 8> kInletXs{{1, 14, 3, 12, 0, 15, 5, 10}};
   const std::uint32_t start = prng.bounded(kInletXs.size());
   for (std::uint32_t offset = 0; offset < kInletXs.size(); ++offset) {
     const int x = kInletXs[(start + offset) % kInletXs.size()];
-    const std::uint8_t mass = static_cast<std::uint8_t>(142U + ((x & 1) != 0 ? 24U : 0U));
+    const std::uint8_t mass = static_cast<std::uint8_t>(148U + ((x & 1) != 0 ? 24U : 0U));
     if (try_inject(world, x, 0, material_cell(MaterialId::kWater, mass, kWaterTemperature))) {
       injected_x = static_cast<std::uint8_t>(x);
       return true;
@@ -89,24 +80,33 @@ bool inject_water_rivulet(World& world, Pcg32& prng, std::uint8_t& injected_x) n
   return false;
 }
 
-bool inject_touch_lava(World& world, float position, std::uint8_t& injected_x) noexcept {
+bool inject_touch_water(World& world, float position, std::uint8_t& injected_x) noexcept {
+  if (!can_add_product_material(world, MaterialId::kWater)) {
+    return false;
+  }
   const std::uint8_t preferred = slider_to_x(position);
   constexpr std::array<int, 7> kOffsets{{0, -1, 1, -2, 2, -3, 3}};
-  const Cell lava = material_cell(MaterialId::kLava, kLavaMass, kLavaTemperature);
+  const Cell water = material_cell(MaterialId::kWater, 176, kWaterTemperature);
   for (int offset : kOffsets) {
     const int x = static_cast<int>(preferred) + offset;
     if (x < 0 || x >= static_cast<int>(kWorldWidth)) {
       continue;
     }
-    if (try_inject(world, x, 0, lava)) {
-      injected_x = static_cast<std::uint8_t>(x);
-      return true;
+    for (int y = 0; y <= 2; ++y) {
+      if (try_inject(world, x, y, water)) {
+        injected_x = static_cast<std::uint8_t>(x);
+        return true;
+      }
     }
   }
   return false;
 }
 
 bool inject_reaction_pair(World& world, Pcg32& prng) noexcept {
+  if (!can_add_product_material(world, MaterialId::kLava) ||
+      !can_add_product_material(world, MaterialId::kWater)) {
+    return false;
+  }
   const std::uint32_t width = static_cast<std::uint32_t>(kWorldWidth - 1U);
   const std::uint32_t height = static_cast<std::uint32_t>(kWorldHeight - 2U);
   const std::uint32_t candidates = width * height;
@@ -178,17 +178,23 @@ float disturbance_strength(const InputFrame& input) noexcept {
 void LavaWaterScene::initialize(World& world, Pcg32& prng) const noexcept {
   world.clear();
 
-  for (int x = 0; x < static_cast<int>(kWorldWidth); ++x) {
-    const int surface = kWaterSurface[static_cast<std::size_t>(x)];
-    for (int y = surface; y < static_cast<int>(kWorldHeight); ++y) {
-      static_cast<void>(world.set_cell(x, y, water_cell_for(x, y)));
-    }
+  const Cell water = material_cell(MaterialId::kWater, kWaterMass, kWaterTemperature);
+  // clang-format off
+  constexpr std::array<std::array<int, 2>, 12> kWaterPockets{{
+      {{0, 15}}, {{2, 14}}, {{3, 15}}, {{5, 13}}, {{6, 15}}, {{7, 12}},
+      {{8, 14}}, {{10, 13}}, {{11, 15}}, {{13, 14}}, {{14, 15}}, {{15, 13}},
+  }};
+  // clang-format on
+  for (std::size_t index = 0; index < kWaterPockets.size(); ++index) {
+    const auto& point = kWaterPockets[index];
+    Cell pocket = water;
+    pocket.mass = static_cast<std::uint8_t>(150U + (index % 3U) * 20U);
+    static_cast<void>(world.set_cell(point[0], point[1], pocket));
   }
 
   // clang-format off
-  constexpr std::array<std::array<int, 2>, 12> kLavaStream{{
-      {{7, 0}}, {{8, 0}}, {{7, 1}}, {{7, 2}}, {{8, 3}}, {{8, 4}},
-      {{7, 5}}, {{8, 6}}, {{7, 7}}, {{8, 8}}, {{7, 9}}, {{8, 9}},
+  constexpr std::array<std::array<int, 2>, 7> kLavaStream{{
+      {{7, 0}}, {{8, 2}}, {{7, 4}}, {{8, 6}}, {{7, 8}}, {{8, 10}}, {{7, 11}},
   }};
   // clang-format on
   for (std::size_t index = 0; index < kLavaStream.size(); ++index) {
@@ -198,10 +204,12 @@ void LavaWaterScene::initialize(World& world, Pcg32& prng) const noexcept {
     static_cast<void>(world.set_cell(point[0], point[1], stream_cell));
   }
 
-  const std::uint8_t contact_x = static_cast<std::uint8_t>(7U + prng.bounded(2U));
-  const int contact_y = kWaterSurface[contact_x] - 1;
-  const Cell contact_cell = material_cell(MaterialId::kLava, kLavaMass, kLavaTemperature);
-  static_cast<void>(world.set_cell(contact_x, contact_y, contact_cell));
+  if (prng.bounded(2U) != 0U) {
+    Cell* cell = world.try_cell(8, 10);
+    if (cell != nullptr) {
+      cell->mass = kLavaMass;
+    }
+  }
 }
 
 LavaWaterSceneStats LavaWaterScene::before_dynamics(LavaWaterTickContext context) const noexcept {
@@ -220,14 +228,6 @@ LavaWaterSceneStats LavaWaterScene::before_dynamics(LavaWaterTickContext context
   if (context.tick != 0U && context.tick % kAutoWaterPeriodTicks == 0U) {
     if (inject_water_rivulet(world, prng, stats.last_injection_x)) {
       ++stats.autonomous_water_injections;
-    }
-  }
-
-  const bool slider_due = input.slider_active && input.slider_strength >= 0.35F &&
-                          context.tick % kTouchLavaPeriodTicks == 0U;
-  if (slider_due && event_budget.try_consume()) {
-    if (inject_touch_lava(world, input.slider_position, stats.last_injection_x)) {
-      ++stats.touch_lava_injections;
     }
   }
 
@@ -250,6 +250,16 @@ LavaWaterSceneStats LavaWaterScene::before_dynamics(LavaWaterTickContext context
   }
 
   return stats;
+}
+
+void LavaWaterScene::after_dynamics(LavaWaterTickContext context,
+                                    LavaWaterSceneStats& stats) const noexcept {
+  const bool slider_due = context.input.slider_active && context.input.slider_strength >= 0.35F &&
+                          context.tick % kTouchWaterPeriodTicks == 0U;
+  if (slider_due && context.event_budget.try_consume() &&
+      inject_touch_water(context.world, context.input.slider_position, stats.last_injection_x)) {
+    ++stats.touch_water_injections;
+  }
 }
 
 } // namespace espsand::sim

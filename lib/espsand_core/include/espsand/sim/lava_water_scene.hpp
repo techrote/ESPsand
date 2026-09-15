@@ -9,12 +9,15 @@
 
 namespace espsand::sim {
 
-inline constexpr std::uint32_t kLavaWaterSceneSchemaVersion = 3;
+inline constexpr std::uint32_t kLavaWaterSceneSchemaVersion = 4;
 
 struct LavaWaterSceneStats {
   std::uint16_t autonomous_lava_injections = 0;
   std::uint16_t autonomous_water_injections = 0;
-  std::uint16_t touch_lava_injections = 0;
+  union {
+    std::uint16_t touch_water_injections = 0;
+    std::uint16_t touch_lava_injections;
+  };
   std::uint16_t burst_pairs = 0;
   std::uint16_t crust_fractures = 0;
   std::uint8_t last_injection_x = 0;
@@ -32,6 +35,7 @@ class LavaWaterScene {
 public:
   void initialize(World& world, Pcg32& prng) const noexcept;
   LavaWaterSceneStats before_dynamics(LavaWaterTickContext context) const noexcept;
+  void after_dynamics(LavaWaterTickContext context, LavaWaterSceneStats& stats) const noexcept;
 };
 
 } // namespace espsand::sim

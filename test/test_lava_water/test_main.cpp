@@ -7,6 +7,7 @@
 #include <espsand/render/world_renderer.hpp>
 #include <espsand/sim/materials.hpp>
 #include <espsand/sim/model.hpp>
+#include <espsand/sim/scene_limits.hpp>
 #include <espsand/sim/world.hpp>
 
 namespace {
@@ -42,6 +43,20 @@ InputFrame gravity_frame(float x, float y) {
 
 std::uint32_t material_mass(const Model& model, MaterialId material) {
   return model.world().totals().mass[espsand::sim::material_index(material)];
+}
+
+std::uint16_t material_cells(const Model& model, MaterialId material) {
+  return model.world().totals().cell_count[espsand::sim::material_index(material)];
+}
+
+bool has_material_in_top_column(const Model& model, MaterialId material, std::uint8_t x) {
+  for (int y = 0; y <= 2; ++y) {
+    const Cell* cell = model.world().try_cell(x, y);
+    if (cell != nullptr && cell->material == material && cell->mass != 0U) {
+      return true;
+    }
+  }
+  return false;
 }
 
 struct Centroid {
@@ -118,14 +133,18 @@ InputFrame trace_frame(std::uint32_t tick) {
   return frame;
 }
 
-void test_scene_initialization_is_strong_and_deterministic() {
+void test_scene_initialization_is_sparse_and_deterministic() {
   Model first(lava_water_config());
   Model second(lava_water_config());
 
   TEST_ASSERT_TRUE(first.invariants_hold());
   TEST_ASSERT_EQUAL_UINT64(first.state_hash(), second.state_hash());
-  TEST_ASSERT_TRUE(material_mass(first, MaterialId::kWater) >= 12000U);
-  TEST_ASSERT_TRUE(material_mass(first, MaterialId::kLava) >= 2000U);
+  TEST_ASSERT_EQUAL_UINT16(12U, material_cells(first, MaterialId::kWater));
+  TEST_ASSERT_EQUAL_UINT16(7U, material_cells(first, MaterialId::kLava));
+  TEST_ASSERT_TRUE(material_cells(first, MaterialId::kWater) <=
+                   espsand::sim::kProductMaterialCellLimit);
+  TEST_ASSERT_TRUE(material_cells(first, MaterialId::kLava) <=
+                   espsand::sim::kProductMaterialCellLimit);
   TEST_ASSERT_EQUAL_UINT32(0U, material_mass(first, MaterialId::kSteam));
 }
 
@@ -133,7 +152,7 @@ void test_autonomous_contact_creates_persistent_crust_and_steam() {
   Model model(lava_water_config());
   const std::uint32_t initial_mass = model.world().totals().total_mass;
 
-  for (std::uint32_t tick = 0; tick < 18U; ++tick) {
+  for (std::uint32_t tick = 0; tick < 24U; ++tick) {
     model.step(gravity_frame(0.0F, 1.0F));
   }
 
@@ -163,7 +182,7 @@ void test_tilt_materially_changes_flow_geometry() {
 
 void test_shake_fractures_crust_without_mass_loss() {
   Model model(lava_water_config(123));
-  for (std::uint32_t tick = 0; tick < 12U; ++tick) {
+  for (std::uint32_t tick = 0; tick < 18U; ++tick) {
     model.step(gravity_frame(0.0F, 1.0F));
   }
   TEST_ASSERT_TRUE(material_mass(model, MaterialId::kCrust) > 0U);
@@ -185,13 +204,20 @@ void test_combo_uses_shared_reaction_path_for_bounded_burst() {
   model.step(frame);
 
   TEST_ASSERT_EQUAL_UINT16(1U, model.lava_water_stats().burst_pairs);
-  TEST_ASSERT_TRUE(model.dynamics_stats().reactions_applied >= 1U);
   TEST_ASSERT_TRUE(model.tick_work_stats().events.used <= model.tick_work_stats().events.limit);
   TEST_ASSERT_TRUE(model.tick_work_stats().reactions.used <=
                    model.tick_work_stats().reactions.limit);
+
+  bool saw_reaction = model.dynamics_stats().reactions_applied != 0U;
+  for (std::uint32_t tick = 0; tick < 60U && !saw_reaction; ++tick) {
+    model.step(gravity_frame(0.0F, 1.0F));
+    saw_reaction = model.dynamics_stats().reactions_applied != 0U;
+  }
+  TEST_ASSERT_TRUE(saw_reaction);
+  TEST_ASSERT_TRUE(material_mass(model, MaterialId::kCrust) > 0U);
 }
 
-void test_pinch_slider_injects_lava_at_bounded_position() {
+void test_pinch_slider_spawns_secondary_water_near_selected_x() {
   Model model(lava_water_config(555));
   InputFrame frame{};
   frame.slider_active = true;
@@ -200,9 +226,12 @@ void test_pinch_slider_injects_lava_at_bounded_position() {
   model.step(frame);
 
   const auto stats = model.lava_water_stats();
-  TEST_ASSERT_EQUAL_UINT16(1U, stats.touch_lava_injections);
+  TEST_ASSERT_EQUAL_UINT16(1U, stats.touch_water_injections);
   TEST_ASSERT_TRUE(stats.last_injection_x >= 8U);
   TEST_ASSERT_TRUE(stats.last_injection_x <= 15U);
+  TEST_ASSERT_TRUE(has_material_in_top_column(model, MaterialId::kWater, stats.last_injection_x));
+  TEST_ASSERT_TRUE(material_cells(model, MaterialId::kWater) <=
+                   espsand::sim::kProductMaterialCellLimit);
 }
 
 void test_reset_restores_exact_fixed_seed_scene() {
@@ -337,12 +366,12 @@ void test_long_randomized_scene_replay_remains_bounded() {
 
 int main(int, char**) {
   UNITY_BEGIN();
-  RUN_TEST(test_scene_initialization_is_strong_and_deterministic);
+  RUN_TEST(test_scene_initialization_is_sparse_and_deterministic);
   RUN_TEST(test_autonomous_contact_creates_persistent_crust_and_steam);
   RUN_TEST(test_tilt_materially_changes_flow_geometry);
   RUN_TEST(test_shake_fractures_crust_without_mass_loss);
   RUN_TEST(test_combo_uses_shared_reaction_path_for_bounded_burst);
-  RUN_TEST(test_pinch_slider_injects_lava_at_bounded_position);
+  RUN_TEST(test_pinch_slider_spawns_secondary_water_near_selected_x);
   RUN_TEST(test_reset_restores_exact_fixed_seed_scene);
   RUN_TEST(test_fixed_seed_trace_replays_identically);
   RUN_TEST(test_renderer_keeps_lava_water_crust_and_steam_distinct);

@@ -11,7 +11,7 @@
 
 namespace espsand::sim {
 
-inline constexpr std::uint32_t kMossGardenSceneSchemaVersion = 1;
+inline constexpr std::uint32_t kMossGardenSceneSchemaVersion = 2;
 inline constexpr std::size_t kMaxMites = 3;
 inline constexpr std::uint8_t kMossShootFlag = 0x01U;
 
@@ -51,6 +51,7 @@ class MossGardenScene {
 public:
   void initialize(World& world, Pcg32& prng) noexcept;
   MossGardenSceneStats before_dynamics(MossGardenTickContext context) noexcept;
+  void after_dynamics(MossGardenTickContext context, MossGardenSceneStats& stats) noexcept;
 
   MossGardenStateSnapshot snapshot() const noexcept;
   bool invariants_hold(const World& world) const noexcept;

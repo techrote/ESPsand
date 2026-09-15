@@ -72,9 +72,11 @@ inline constexpr std::uint8_t kQmiPreferredAddress = 0x6B;
 inline constexpr std::uint8_t kQmiAlternateAddress = 0x6A;
 inline constexpr std::uint8_t kQmiExpectedWhoAmI = 0x05;
 
-// This is deliberately conservative while the physical board has not completed a thermal/current
-// soak. It is a development ceiling, not a certified safe electrical limit.
-inline constexpr std::uint8_t kInitialBrightnessCeiling = 32;
+// Beauty rendering now reserves 0..127 for ordinary material and 128..255 for sparse pseudo-HDR
+// energetic/highlight state. Allowing the full scalar code range here is not a declaration that a
+// dense 255 frame is safe: every frame remains subject to the centralized 4096-unit aggregate load
+// limiter, and electrical/thermal limits still require physical validation.
+inline constexpr std::uint8_t kInitialBrightnessCeiling = 255;
 
 // Physical ES-002 calibration established that the original identity projection was rotated
 // 90 degrees counter-clockwise relative to the visible panel. With screen coordinates defined as

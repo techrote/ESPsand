@@ -225,20 +225,27 @@ void Model::step(const InputFrame& input) noexcept {
     lava_water_stats_ =
         lava_water_scene_.before_dynamics({world_, prng_, frame, tick_, event_budget_});
     dynamics_stats_ = dynamics_engine_.step(world_, frame, tick_, event_budget_, reaction_budget_);
+    lava_water_scene_.after_dynamics({world_, prng_, frame, tick_, event_budget_},
+                                     lava_water_stats_);
     break;
   case SceneId::kSodiumWater:
     sodium_water_stats_ =
         sodium_water_scene_.before_dynamics({world_, prng_, frame, tick_, event_budget_});
     dynamics_stats_ = dynamics_engine_.step(world_, frame, tick_, event_budget_, reaction_budget_);
+    sodium_water_scene_.after_dynamics({world_, prng_, frame, tick_, event_budget_},
+                                       sodium_water_stats_);
     break;
   case SceneId::kOilFire:
     oil_fire_stats_ = oil_fire_scene_.before_dynamics({world_, prng_, frame, tick_, event_budget_});
     dynamics_stats_ = dynamics_engine_.step(world_, frame, tick_, event_budget_, reaction_budget_);
+    oil_fire_scene_.after_dynamics({world_, prng_, frame, tick_, event_budget_}, oil_fire_stats_);
     break;
   case SceneId::kMossGarden:
     moss_garden_stats_ =
         moss_garden_scene_.before_dynamics({world_, prng_, frame, tick_, event_budget_});
     dynamics_stats_ = dynamics_engine_.step(world_, frame, tick_, event_budget_, reaction_budget_);
+    moss_garden_scene_.after_dynamics({world_, prng_, frame, tick_, event_budget_},
+                                      moss_garden_stats_);
     break;
   case SceneId::kDeterminismFixture:
     step_determinism_fixture(frame);

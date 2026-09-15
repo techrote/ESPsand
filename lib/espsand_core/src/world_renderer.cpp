@@ -39,6 +39,8 @@ constexpr std::array<MaterialStyle, sim::kMaterialCount> kStyles{{
 
 constexpr MaterialStyle kUnknownStyle{{380, 0, 380}, 80};
 constexpr std::uint32_t kToneKnee = 1024U;
+constexpr std::int16_t kHotLavaPseudoHdrTemperature = 600;
+constexpr std::int16_t kHotSteamPseudoHdrTemperature = 300;
 
 const MaterialStyle& style_for(sim::MaterialId material, bool& valid) noexcept {
   valid = sim::is_valid_material(material);
@@ -46,6 +48,22 @@ const MaterialStyle& style_for(sim::MaterialId material, bool& valid) noexcept {
     return kUnknownStyle;
   }
   return kStyles[sim::material_index(material)];
+}
+
+bool cell_uses_pseudo_hdr(const sim::Cell& cell) noexcept {
+  if (cell.mass == 0U) {
+    return false;
+  }
+  if (cell.material == sim::MaterialId::kFire) {
+    return true;
+  }
+  if (cell.material == sim::MaterialId::kLava) {
+    return cell.temperature >= kHotLavaPseudoHdrTemperature;
+  }
+  if (cell.material == sim::MaterialId::kSteam) {
+    return cell.temperature >= kHotSteamPseudoHdrTemperature;
+  }
+  return false;
 }
 
 LinearRgb shade_cell(const sim::Cell& cell, const MaterialStyle& style) noexcept {
@@ -226,6 +244,25 @@ io::Rgb tone_map(const LinearRgb& color, std::uint16_t exposure_q8) noexcept {
           tone_map(color.b, exposure_q8)};
 }
 
+std::uint8_t ordinary_channel(std::uint8_t value) noexcept {
+  const std::uint16_t half = static_cast<std::uint16_t>(value + 1U) / 2U;
+  return static_cast<std::uint8_t>(std::min<std::uint16_t>(kOrdinaryDisplayCeiling, half));
+}
+
+io::Rgb apply_display_domain(io::Rgb color, bool pseudo_hdr) noexcept {
+  if (pseudo_hdr) {
+    return color;
+  }
+  color.r = ordinary_channel(color.r);
+  color.g = ordinary_channel(color.g);
+  color.b = ordinary_channel(color.b);
+  return color;
+}
+
+bool reaches_pseudo_hdr(const io::Rgb& color) noexcept {
+  return color.r >= kPseudoHdrFloor || color.g >= kPseudoHdrFloor || color.b >= kPseudoHdrFloor;
+}
+
 std::uint32_t temperature_magnitude(std::int16_t temperature) noexcept {
   const std::int32_t value = temperature;
   return static_cast<std::uint32_t>(value < 0 ? -value : value);
@@ -264,6 +301,7 @@ RenderResult WorldRenderer::render(const sim::World& world,
       std::int16_t diagnostic_temperature = 0;
       std::uint32_t block_mass = 0;
       std::uint8_t occupied_samples = 0;
+      bool pseudo_hdr = false;
 
       for (std::size_t local_y = 0; local_y < 2U; ++local_y) {
         for (std::size_t local_x = 0; local_x < 2U; ++local_x) {
@@ -293,6 +331,7 @@ RenderResult WorldRenderer::render(const sim::World& world,
             continue;
           }
 
+          pseudo_hdr = pseudo_hdr || cell_uses_pseudo_hdr(*cell);
           ++occupied_samples;
           const LinearRgb shaded = shade_cell(*cell, style);
           aggregate.r += shaded.r * cell->mass;
@@ -354,7 +393,11 @@ RenderResult WorldRenderer::render(const sim::World& world,
         aggregate.b = lerp_channel(aggregate.b, accent.b, weight);
       }
 
-      result.frame[output_index] = tone_map(aggregate, config.exposure_q8);
+      const io::Rgb mapped = tone_map(aggregate, config.exposure_q8);
+      result.frame[output_index] = apply_display_domain(mapped, pseudo_hdr);
+      if (pseudo_hdr && reaches_pseudo_hdr(result.frame[output_index])) {
+        ++result.stats.pseudo_hdr_pixels;
+      }
     }
   }
 

@@ -7,6 +7,14 @@
 
 namespace espsand::render {
 
+inline constexpr std::uint8_t kOrdinaryDisplayCenter = 63U;
+inline constexpr std::uint8_t kOrdinaryDisplayCeiling = 127U;
+inline constexpr std::uint8_t kPseudoHdrFloor = 128U;
+
+// Beauty-mode values 0..127 are the ordinary perceptual domain. 128..255 is intentionally
+// reserved for sparse energetic/reactive/highlight state. These are LED code values, not calibrated
+// luminance, current or thermal ratings.
+
 enum class RenderMode : std::uint8_t {
   kBeauty = 0,
   kMaterialId,
@@ -22,6 +30,7 @@ struct RenderConfig {
 struct RenderStats {
   std::uint16_t unknown_material_cells = 0;
   std::uint16_t minority_preserved_pixels = 0;
+  std::uint16_t pseudo_hdr_pixels = 0;
 };
 
 struct RenderResult {
