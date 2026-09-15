@@ -14,7 +14,10 @@ inline constexpr std::uint32_t kMaximumFrameChannelSum =
 inline constexpr std::uint32_t kDefaultFrameLoadLimit = 4096U;
 
 struct OutputPolicy {
-  std::uint8_t brightness_ceiling = 32;
+  // Beauty rendering now owns the ordinary 0..127 / pseudo-HDR 128..255 luminance distinction.
+  // The default scalar ceiling therefore permits the complete code range; aggregate load limiting
+  // remains mandatory and may reduce the applied scalar for dense/high-energy frames.
+  std::uint8_t brightness_ceiling = 255;
   std::uint32_t frame_load_limit = kDefaultFrameLoadLimit;
 };
 
