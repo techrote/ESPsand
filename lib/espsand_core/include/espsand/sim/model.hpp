@@ -4,6 +4,7 @@
 
 #include <espsand/sim/dynamics.hpp>
 #include <espsand/sim/input_frame.hpp>
+#include <espsand/sim/lava_water_scene.hpp>
 #include <espsand/sim/prng.hpp>
 #include <espsand/sim/work_budget.hpp>
 #include <espsand/sim/world.hpp>
@@ -15,6 +16,7 @@ inline constexpr std::uint32_t kStateHashSchemaVersion = 1;
 enum class SceneId : std::uint8_t {
   kDeterminismFixture = 0,
   kDynamicsFixture = 1,
+  kLavaWater = 2,
 };
 
 struct ModelConfig {
@@ -71,6 +73,7 @@ public:
   TickWorkStats tick_work_stats() const noexcept;
   FixtureStateSnapshot fixture_state() const noexcept;
   DynamicsStats dynamics_stats() const noexcept;
+  LavaWaterSceneStats lava_water_stats() const noexcept;
 
   bool invariants_hold() const noexcept;
   std::uint64_t state_hash() const noexcept;
@@ -89,9 +92,11 @@ private:
   WorkBudget event_budget_{};
   WorkBudget reaction_budget_{};
   DynamicsEngine dynamics_engine_{};
+  LavaWaterScene lava_water_scene_{};
 
   FixtureStateSnapshot fixture_{};
   DynamicsStats dynamics_stats_{};
+  LavaWaterSceneStats lava_water_stats_{};
 };
 
 } // namespace espsand::sim

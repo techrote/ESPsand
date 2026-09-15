@@ -2,12 +2,12 @@
 
 #ifndef ESPSAND_MINIMAL_BRINGUP
 
-#include "app/diagnostic_runtime.hpp"
+#include "app/scene_runtime.hpp"
 #include "board/power_policy.hpp"
 
 namespace {
 
-espsand::app::DiagnosticRuntime runtime;
+espsand::app::SceneRuntime runtime;
 
 } // namespace
 

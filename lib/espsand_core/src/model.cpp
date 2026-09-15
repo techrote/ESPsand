@@ -62,6 +62,15 @@ void add_budget_stats(StableHasher& hasher, const WorkBudgetStats& stats) noexce
   hasher.add_u16(stats.dropped);
 }
 
+void add_lava_water_stats(StableHasher& hasher, const LavaWaterSceneStats& stats) noexcept {
+  hasher.add_u16(stats.autonomous_lava_injections);
+  hasher.add_u16(stats.autonomous_water_injections);
+  hasher.add_u16(stats.touch_lava_injections);
+  hasher.add_u16(stats.burst_pairs);
+  hasher.add_u16(stats.crust_fractures);
+  hasher.add_u8(stats.last_injection_x);
+}
+
 Cell fixture_marker_cell() noexcept {
   Cell cell{};
   cell.material = MaterialId::kTracer;
@@ -107,6 +116,7 @@ void Model::init(const ModelConfig& config) noexcept {
   switch (config_.scene) {
   case SceneId::kDeterminismFixture:
   case SceneId::kDynamicsFixture:
+  case SceneId::kLavaWater:
     break;
   default:
     config_.scene = SceneId::kDeterminismFixture;
@@ -123,11 +133,18 @@ void Model::reset() noexcept {
   world_.clear();
   fixture_ = FixtureStateSnapshot{};
   dynamics_stats_ = DynamicsStats{};
+  lava_water_stats_ = LavaWaterSceneStats{};
 
-  if (config_.scene == SceneId::kDynamicsFixture) {
+  switch (config_.scene) {
+  case SceneId::kDynamicsFixture:
     initialize_dynamics_fixture();
-  } else {
+    break;
+  case SceneId::kLavaWater:
+    lava_water_scene_.initialize(world_, prng_);
+    break;
+  case SceneId::kDeterminismFixture:
     initialize_fixture();
+    break;
   }
 }
 
@@ -142,11 +159,20 @@ void Model::step(const InputFrame& input) noexcept {
   event_budget_.reset(config_.event_budget);
   reaction_budget_.reset(config_.reaction_budget);
   dynamics_stats_ = DynamicsStats{};
+  lava_water_stats_ = LavaWaterSceneStats{};
 
-  if (config_.scene == SceneId::kDynamicsFixture) {
+  switch (config_.scene) {
+  case SceneId::kDynamicsFixture:
     dynamics_stats_ = dynamics_engine_.step(world_, frame, tick_, event_budget_, reaction_budget_);
-  } else {
+    break;
+  case SceneId::kLavaWater:
+    lava_water_stats_ =
+        lava_water_scene_.before_dynamics({world_, prng_, frame, tick_, event_budget_});
+    dynamics_stats_ = dynamics_engine_.step(world_, frame, tick_, event_budget_, reaction_budget_);
+    break;
+  case SceneId::kDeterminismFixture:
     step_determinism_fixture(frame);
+    break;
   }
 
   ++tick_;
@@ -164,12 +190,16 @@ DynamicsStats Model::dynamics_stats() const noexcept {
   return dynamics_stats_;
 }
 
+LavaWaterSceneStats Model::lava_water_stats() const noexcept {
+  return lava_water_stats_;
+}
+
 bool Model::invariants_hold() const noexcept {
   if (!world_.invariants_hold()) {
     return false;
   }
 
-  if (config_.scene == SceneId::kDynamicsFixture) {
+  if (config_.scene == SceneId::kDynamicsFixture || config_.scene == SceneId::kLavaWater) {
     return true;
   }
 
@@ -191,8 +221,11 @@ std::uint64_t Model::state_hash() const noexcept {
   hasher.add_u16(static_cast<std::uint16_t>(kWorldWidth));
   hasher.add_u16(static_cast<std::uint16_t>(kWorldHeight));
   hasher.add_u8(static_cast<std::uint8_t>(config_.scene));
-  if (config_.scene == SceneId::kDynamicsFixture) {
+  if (config_.scene == SceneId::kDynamicsFixture || config_.scene == SceneId::kLavaWater) {
     hasher.add_u32(kDynamicsSchemaVersion);
+  }
+  if (config_.scene == SceneId::kLavaWater) {
+    hasher.add_u32(kLavaWaterSceneSchemaVersion);
   }
 
   hasher.add_u64(config_.seed);
@@ -211,6 +244,9 @@ std::uint64_t Model::state_hash() const noexcept {
 
   add_budget_stats(hasher, event_budget_.stats());
   add_budget_stats(hasher, reaction_budget_.stats());
+  if (config_.scene == SceneId::kLavaWater) {
+    add_lava_water_stats(hasher, lava_water_stats_);
+  }
 
   for (const Cell& cell : world_.cells()) {
     hasher.add_u8(static_cast<std::uint8_t>(cell.material));
