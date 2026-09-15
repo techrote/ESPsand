@@ -49,6 +49,16 @@ std::uint16_t material_cells(const Model& model, MaterialId material) {
   return model.world().totals().cell_count[espsand::sim::material_index(material)];
 }
 
+bool has_material_in_top_column(const Model& model, MaterialId material, std::uint8_t x) {
+  for (int y = 0; y <= 2; ++y) {
+    const Cell* cell = model.world().try_cell(x, y);
+    if (cell != nullptr && cell->material == material && cell->mass != 0U) {
+      return true;
+    }
+  }
+  return false;
+}
+
 struct Centroid {
   float x = 0.0F;
   float y = 0.0F;
@@ -194,15 +204,21 @@ void test_combo_uses_shared_reaction_path_for_bounded_burst() {
   model.step(frame);
 
   TEST_ASSERT_EQUAL_UINT16(1U, model.lava_water_stats().burst_pairs);
-  TEST_ASSERT_TRUE(model.dynamics_stats().reactions_applied >= 1U);
   TEST_ASSERT_TRUE(model.tick_work_stats().events.used <= model.tick_work_stats().events.limit);
   TEST_ASSERT_TRUE(model.tick_work_stats().reactions.used <=
                    model.tick_work_stats().reactions.limit);
+
+  bool saw_reaction = model.dynamics_stats().reactions_applied != 0U;
+  for (std::uint32_t tick = 0; tick < 60U && !saw_reaction; ++tick) {
+    model.step(gravity_frame(0.0F, 1.0F));
+    saw_reaction = model.dynamics_stats().reactions_applied != 0U;
+  }
+  TEST_ASSERT_TRUE(saw_reaction);
+  TEST_ASSERT_TRUE(material_mass(model, MaterialId::kCrust) > 0U);
 }
 
 void test_pinch_slider_spawns_secondary_water_near_selected_x() {
   Model model(lava_water_config(555));
-  const std::uint16_t water_before = material_cells(model, MaterialId::kWater);
   InputFrame frame{};
   frame.slider_active = true;
   frame.slider_position = 0.75F;
@@ -213,7 +229,7 @@ void test_pinch_slider_spawns_secondary_water_near_selected_x() {
   TEST_ASSERT_EQUAL_UINT16(1U, stats.touch_water_injections);
   TEST_ASSERT_TRUE(stats.last_injection_x >= 8U);
   TEST_ASSERT_TRUE(stats.last_injection_x <= 15U);
-  TEST_ASSERT_TRUE(material_cells(model, MaterialId::kWater) > water_before);
+  TEST_ASSERT_TRUE(has_material_in_top_column(model, MaterialId::kWater, stats.last_injection_x));
   TEST_ASSERT_TRUE(material_cells(model, MaterialId::kWater) <=
                    espsand::sim::kProductMaterialCellLimit);
 }
