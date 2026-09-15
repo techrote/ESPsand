@@ -15,7 +15,7 @@ constexpr std::uint16_t kMaxGrowthEnergy = 512;
 constexpr std::uint64_t kGrowthChargePeriodTicks = 6;
 constexpr std::uint64_t kGrowthPeriodTicks = 10;
 constexpr std::uint64_t kAutonomousRainPeriodTicks = 210;
-constexpr std::uint64_t kTouchMitePeriodTicks = 12;
+constexpr std::uint64_t kTouchRainPeriodTicks = 12;
 constexpr std::uint8_t kMossInitialMass = 150;
 constexpr std::uint8_t kMossInitialAux = 132;
 constexpr std::uint8_t kMiteInitialEnergy = 96;
@@ -283,27 +283,6 @@ std::uint16_t inject_rain(World& world, std::uint8_t preferred_x) noexcept {
   return injected;
 }
 
-bool place_mite_near_x(MiteState& mite, const World& world, std::uint8_t preferred_x) noexcept {
-  constexpr std::array<int, 11> kOffsets{{0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5}};
-  for (int offset : kOffsets) {
-    const int x = static_cast<int>(preferred_x) + offset;
-    if (x < 0 || x >= static_cast<int>(kWorldWidth)) {
-      continue;
-    }
-    for (int y = 0; y < static_cast<int>(kWorldHeight); ++y) {
-      if (!is_moss(world.try_cell(x, y))) {
-        continue;
-      }
-      mite.x = static_cast<std::uint8_t>(x);
-      mite.y = static_cast<std::uint8_t>(y);
-      mite.energy = 84U;
-      mite.active = true;
-      return true;
-    }
-  }
-  return false;
-}
-
 bool seed_moss_near_water(World& world, Pcg32& prng) noexcept {
   if (!can_add_product_material(world, MaterialId::kMoss)) {
     return false;
@@ -366,7 +345,7 @@ void MossGardenScene::initialize(World& world, Pcg32& prng) noexcept {
   static_cast<void>(world.set_cell(2, 10, left_shoot));
   static_cast<void>(world.set_cell(13, 10, right_shoot));
 
-  // Keep the autonomous starting mite on actual biomass. Touch adds further mites explicitly.
+  // Keep the autonomous starting mite on actual biomass. Touch controls water, not agent count.
   mites_[0] = {2, 11, kMiteInitialEnergy, true};
   mite_count_ = active_mite_count(mites_);
   static_cast<void>(prng);
@@ -460,19 +439,15 @@ MossGardenSceneStats MossGardenScene::before_dynamics(MossGardenTickContext cont
 void MossGardenScene::after_dynamics(MossGardenTickContext context,
                                      MossGardenSceneStats& stats) noexcept {
   const bool slider_due = context.input.slider_active && context.input.slider_strength >= 0.35F &&
-                          context.tick % kTouchMitePeriodTicks == 0U;
+                          context.tick % kTouchRainPeriodTicks == 0U;
   if (!slider_due || !context.event_budget.try_consume()) {
     return;
   }
 
   const std::uint8_t preferred_x = slider_x(context.input.slider_position);
-  for (MiteState& mite : mites_) {
-    if (!mite.active && place_mite_near_x(mite, context.world, preferred_x)) {
-      ++stats.touch_mite_spawns;
-      break;
-    }
+  if (inject_rain(context.world, preferred_x) != 0U) {
+    ++stats.touch_rain_pulses;
   }
-  mite_count_ = active_mite_count(mites_);
 }
 
 MossGardenStateSnapshot MossGardenScene::snapshot() const noexcept {
