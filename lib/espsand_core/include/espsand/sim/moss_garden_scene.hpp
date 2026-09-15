@@ -11,7 +11,7 @@
 
 namespace espsand::sim {
 
-inline constexpr std::uint32_t kMossGardenSceneSchemaVersion = 1;
+inline constexpr std::uint32_t kMossGardenSceneSchemaVersion = 2;
 inline constexpr std::size_t kMaxMites = 3;
 inline constexpr std::uint8_t kMossShootFlag = 0x01U;
 
