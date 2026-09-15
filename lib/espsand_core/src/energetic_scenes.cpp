@@ -270,17 +270,6 @@ SodiumWaterSceneStats SodiumWaterScene::before_dynamics(TickContext context) con
     }
   }
 
-  const bool slider_injection = context.input.slider_active &&
-                                context.input.slider_strength >= 0.35F &&
-                                context.tick % kTouchInjectionPeriodTicks == 0U;
-  if (slider_injection && context.event_budget.try_consume()) {
-    const Cell water = material_cell(MaterialId::kWater, 176, kWaterTemperature);
-    if (inject_selected_top(context.world, context.input.slider_position, water,
-                            stats.last_injection_x)) {
-      ++stats.touch_water_injections;
-    }
-  }
-
   if (context.input.cap_combo_event && context.event_budget.try_consume()) {
     if (inject_sodium_water_pair(context.world, context.prng)) {
       ++stats.burst_pairs;
@@ -288,6 +277,20 @@ SodiumWaterSceneStats SodiumWaterScene::before_dynamics(TickContext context) con
   }
 
   return stats;
+}
+
+void SodiumWaterScene::after_dynamics(TickContext context, SodiumWaterSceneStats& stats) const noexcept {
+  const bool slider_injection = context.input.slider_active &&
+                                context.input.slider_strength >= 0.35F &&
+                                context.tick % kTouchInjectionPeriodTicks == 0U;
+  if (!slider_injection || !context.event_budget.try_consume()) {
+    return;
+  }
+  const Cell water = material_cell(MaterialId::kWater, 176, kWaterTemperature);
+  if (inject_selected_top(context.world, context.input.slider_position, water,
+                          stats.last_injection_x)) {
+    ++stats.touch_water_injections;
+  }
 }
 
 void OilFireScene::initialize(World& world, Pcg32& prng) const noexcept {
@@ -304,9 +307,10 @@ void OilFireScene::initialize(World& world, Pcg32& prng) const noexcept {
     static_cast<void>(world.set_cell(point[0], point[1], water));
   }
 
+  // Keep one adjacent fuel pair so the sparse scene still demonstrates real propagation.
   // clang-format off
   constexpr std::array<std::array<int, 2>, 10> kOilPockets{{
-      {{0, 11}}, {{2, 10}}, {{4, 12}}, {{5, 9}}, {{7, 11}},
+      {{0, 11}}, {{1, 11}}, {{4, 12}}, {{5, 9}}, {{7, 11}},
       {{8, 8}}, {{10, 10}}, {{12, 12}}, {{13, 9}}, {{15, 11}},
   }};
   // clang-format on
@@ -321,12 +325,7 @@ void OilFireScene::initialize(World& world, Pcg32& prng) const noexcept {
   if (ignition != nullptr) {
     static_cast<void>(ignite_cell(*ignition));
   }
-  if (prng.bounded(3U) == 0U) {
-    Cell* second = world.try_cell(2, 10);
-    if (second != nullptr) {
-      static_cast<void>(ignite_cell(*second));
-    }
-  }
+  static_cast<void>(prng);
 }
 
 OilFireSceneStats OilFireScene::before_dynamics(TickContext context) const noexcept {
@@ -344,15 +343,6 @@ OilFireSceneStats OilFireScene::before_dynamics(TickContext context) const noexc
     }
   }
 
-  const bool slider_injection = context.input.slider_active &&
-                                context.input.slider_strength >= 0.35F &&
-                                context.tick % kTouchInjectionPeriodTicks == 0U;
-  if (slider_injection && context.event_budget.try_consume()) {
-    if (ignite_oil_near_x(context.world, context.input.slider_position, stats.last_injection_x)) {
-      ++stats.touch_ignitions;
-    }
-  }
-
   if (context.input.cap_combo_event && context.event_budget.try_consume()) {
     if (ignite_one_oil(context.world, context.prng, false)) {
       ++stats.combo_ignitions;
@@ -360,6 +350,16 @@ OilFireSceneStats OilFireScene::before_dynamics(TickContext context) const noexc
   }
 
   return stats;
+}
+
+void OilFireScene::after_dynamics(TickContext context, OilFireSceneStats& stats) const noexcept {
+  const bool slider_injection = context.input.slider_active &&
+                                context.input.slider_strength >= 0.35F &&
+                                context.tick % kTouchInjectionPeriodTicks == 0U;
+  if (slider_injection && context.event_budget.try_consume() &&
+      ignite_oil_near_x(context.world, context.input.slider_position, stats.last_injection_x)) {
+    ++stats.touch_ignitions;
+  }
 }
 
 } // namespace espsand::sim
