@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdio>
 
+#include <espsand/render/scene_effects.hpp>
 #include <espsand/sim/materials.hpp>
 
 #include "board/board_profile.hpp"
@@ -19,20 +20,23 @@ constexpr std::uint64_t kDefaultSceneSeed = 0xE5007007ULL;
 struct SceneRenderSettings {
   std::uint16_t exposure_q8 = 320;
   std::uint8_t brightness = 28;
+  std::uint8_t persistence_q8 = 56;
 };
 
 SceneRenderSettings render_settings(sim::SceneId scene) noexcept {
   switch (scene) {
   case sim::SceneId::kSodiumWater:
-    return {340, 26};
+    return {340, 26, 48};
   case sim::SceneId::kOilFire:
-    return {300, 28};
+    return {300, 28, 64};
+  case sim::SceneId::kMossGarden:
+    return {300, 26, 96};
   case sim::SceneId::kLavaWater:
   case sim::SceneId::kDeterminismFixture:
   case sim::SceneId::kDynamicsFixture:
-    return {320, 28};
+    return {320, 28, 56};
   }
-  return {320, 28};
+  return {320, 28, 56};
 }
 
 std::uint32_t material_mass(const sim::MaterialTotals& totals, sim::MaterialId material) noexcept {
@@ -198,6 +202,8 @@ void SceneRuntime::configure_scene(sim::SceneId scene, std::uint64_t seed) {
   config.reaction_budget = 12;
   model_.init(config);
   latest_render_stats_ = {};
+  previous_frame_ = {};
+  has_previous_frame_ = false;
 }
 
 void SceneRuntime::run_simulation_tick(std::uint64_t now_us) {
@@ -218,7 +224,17 @@ void SceneRuntime::render_scene() {
   config.exposure_q8 = settings.exposure_q8;
 
   render::RenderResult result = renderer_.render(model_.world(), config);
+  if (has_previous_frame_) {
+    render::blend_with_previous(result.frame, previous_frame_, settings.persistence_q8);
+  }
+  previous_frame_ = result.frame;
+  has_previous_frame_ = true;
+
   highlight_hot_reaction(result.frame, model_.world(), model_.dynamics_stats().reactions_applied);
+  if (model_.scene() == sim::SceneId::kMossGarden) {
+    render::apply_mite_overlay(result.frame, model_.moss_garden_state());
+  }
+
   latest_render_stats_ = result.stats;
   matrix_.present(result.frame, settings.brightness);
   ++rendered_frames_window_;
@@ -228,6 +244,8 @@ void SceneRuntime::handle_button(io::ButtonEvent event) {
   char line[192];
   if (event == io::ButtonEvent::kShortPress) {
     model_.reset();
+    previous_frame_ = {};
+    has_previous_frame_ = false;
     const char* name = sim::scene_name(model_.scene());
     const auto seed = static_cast<unsigned long long>(model_.seed());
     std::snprintf(line, sizeof(line), "input.button event=short action=reset scene=%s seed=%llu",
@@ -350,6 +368,24 @@ void SceneRuntime::emit_scene_telemetry(const sim::MaterialTotals& totals,
         scene.autonomous_oil_injections, scene.autonomous_ignitions, scene.touch_oil_injections,
         scene.combo_ignitions, work.events.used, work.events.limit, work.events.dropped,
         work.reactions.used, work.reactions.limit, work.reactions.dropped,
+        output.requested_brightness, output.applied_brightness,
+        static_cast<unsigned long>(output.estimated_frame_load),
+        output.ceiling_limited || output.load_limited ? 1U : 0U);
+    break;
+  }
+  case sim::SceneId::kMossGarden: {
+    const sim::MossGardenSceneStats scene = model_.moss_garden_stats();
+    const sim::MossGardenStateSnapshot state = model_.moss_garden_state();
+    std::snprintf(
+        line, sizeof(line),
+        "scene.moss_garden water=%lu moss=%lu mites=%u growth_energy=%u grow=%u reinforce=%u "
+        "mite_move=%u feed=%u starved=%u rain=%u seed=%u scatter=%u "
+        "event=%u/%u/%u led=%u/%u load=%lu limited=%u",
+        static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kWater)),
+        static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kMoss)),
+        state.mite_count, state.growth_energy, scene.growth_cells, scene.reinforced_cells,
+        scene.mite_moves, scene.feeds, scene.starved, scene.rain_pulses, scene.seed_pulses,
+        scene.scatter_events, work.events.used, work.events.limit, work.events.dropped,
         output.requested_brightness, output.applied_brightness,
         static_cast<unsigned long>(output.estimated_frame_load),
         output.ceiling_limited || output.load_limited ? 1U : 0U);
