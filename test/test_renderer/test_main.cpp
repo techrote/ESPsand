@@ -45,8 +45,7 @@ void test_renderer_is_deterministic_for_fixed_world() {
   const auto second = renderer.render(world);
 
   TEST_ASSERT_EQUAL_MEMORY(first.frame.data(), second.frame.data(), sizeof(first.frame));
-  TEST_ASSERT_EQUAL_UINT16(first.stats.unknown_material_cells,
-                           second.stats.unknown_material_cells);
+  TEST_ASSERT_EQUAL_UINT16(first.stats.unknown_material_cells, second.stats.unknown_material_cells);
   TEST_ASSERT_EQUAL_UINT16(first.stats.minority_preserved_pixels,
                            second.stats.minority_preserved_pixels);
 }
@@ -107,15 +106,15 @@ void test_render_diagnostic_modes_are_deterministic() {
   fill_block(world, 0, 0, cell);
 
   WorldRenderer renderer;
-  for (RenderMode mode : {RenderMode::kBeauty, RenderMode::kMaterialId,
-                          RenderMode::kTemperature, RenderMode::kMass}) {
+  const RenderMode modes[] = {RenderMode::kBeauty, RenderMode::kMaterialId,
+                              RenderMode::kTemperature, RenderMode::kMass};
+  for (RenderMode mode : modes) {
     RenderConfig config{};
     config.mode = mode;
     const auto first = renderer.render(world, config);
     const auto second = renderer.render(world, config);
     TEST_ASSERT_EQUAL_MEMORY(first.frame.data(), second.frame.data(), sizeof(first.frame));
-    TEST_ASSERT_TRUE(first.frame[0].r != 0U || first.frame[0].g != 0U ||
-                     first.frame[0].b != 0U);
+    TEST_ASSERT_TRUE(first.frame[0].r != 0U || first.frame[0].g != 0U || first.frame[0].b != 0U);
   }
 }
 
