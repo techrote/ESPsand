@@ -224,10 +224,12 @@ void SodiumWaterScene::initialize(World& world, Pcg32& prng) const noexcept {
   world.clear();
 
   const Cell water = material_cell(MaterialId::kWater, kWaterMass, kWaterTemperature);
+  // clang-format off
   constexpr std::array<std::array<int, 2>, 12> kWaterPockets{{
       {{0, 15}}, {{2, 13}}, {{3, 15}}, {{5, 12}}, {{6, 14}}, {{7, 15}},
       {{8, 12}}, {{10, 14}}, {{11, 15}}, {{13, 13}}, {{14, 15}}, {{15, 12}},
   }};
+  // clang-format on
   for (std::size_t index = 0; index < kWaterPockets.size(); ++index) {
     Cell pocket = water;
     pocket.mass = static_cast<std::uint8_t>(146U + (index % 3U) * 18U);
@@ -236,9 +238,11 @@ void SodiumWaterScene::initialize(World& world, Pcg32& prng) const noexcept {
   }
 
   const Cell sodium = material_cell(MaterialId::kSodiumLike, kSodiumMass, kSodiumTemperature);
+  // clang-format off
   constexpr std::array<std::array<int, 2>, 4> kDrops{{
       {{3, 1}}, {{11, 4}}, {{6, 7}}, {{8, 11}},
   }};
+  // clang-format on
   for (const auto& point : kDrops) {
     static_cast<void>(world.set_cell(point[0], point[1], sodium));
   }
@@ -290,18 +294,22 @@ void OilFireScene::initialize(World& world, Pcg32& prng) const noexcept {
   world.clear();
 
   const Cell water = material_cell(MaterialId::kWater, kWaterMass, kWaterTemperature);
+  // clang-format off
   constexpr std::array<std::array<int, 2>, 8> kWaterPockets{{
       {{1, 15}}, {{3, 13}}, {{5, 15}}, {{7, 14}},
       {{9, 15}}, {{11, 13}}, {{13, 15}}, {{15, 14}},
   }};
+  // clang-format on
   for (const auto& point : kWaterPockets) {
     static_cast<void>(world.set_cell(point[0], point[1], water));
   }
 
+  // clang-format off
   constexpr std::array<std::array<int, 2>, 10> kOilPockets{{
       {{0, 11}}, {{2, 10}}, {{4, 12}}, {{5, 9}}, {{7, 11}},
       {{8, 8}}, {{10, 10}}, {{12, 12}}, {{13, 9}}, {{15, 11}},
   }};
+  // clang-format on
   for (std::size_t index = 0; index < kOilPockets.size(); ++index) {
     const std::uint8_t mass = static_cast<std::uint8_t>(154U + (index % 3U) * 18U);
     const Cell oil = material_cell(MaterialId::kOil, mass, kOilTemperature);
