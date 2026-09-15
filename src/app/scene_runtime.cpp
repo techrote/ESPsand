@@ -22,6 +22,13 @@ std::uint32_t material_mass(const sim::MaterialTotals& totals, sim::MaterialId m
   return totals.mass[sim::material_index(material)];
 }
 
+float rate_hz(std::uint32_t count, std::uint64_t window_us) noexcept {
+  if (window_us == 0U) {
+    return 0.0F;
+  }
+  return static_cast<float>(count) * 1000000.0F / static_cast<float>(window_us);
+}
+
 void highlight_hot_steam(io::Frame8x8& frame, const sim::World& world,
                          std::uint16_t reactions_applied) noexcept {
   if (reactions_applied == 0U) {
@@ -208,18 +215,9 @@ void SceneRuntime::handle_button(io::ButtonEvent event) {
 
 void SceneRuntime::emit_telemetry(std::uint64_t now_us) {
   const std::uint64_t window_us = now_us - telemetry_window_start_us_;
-  const float imu_rate_hz = window_us == 0U
-                                ? 0.0F
-                                : static_cast<float>(imu_samples_window_) * 1000000.0F /
-                                      static_cast<float>(window_us);
-  const float sim_rate_hz = window_us == 0U
-                                ? 0.0F
-                                : static_cast<float>(sim_ticks_window_) * 1000000.0F /
-                                      static_cast<float>(window_us);
-  const float render_rate_hz = window_us == 0U
-                                   ? 0.0F
-                                   : static_cast<float>(rendered_frames_window_) * 1000000.0F /
-                                         static_cast<float>(window_us);
+  const float imu_rate_hz = rate_hz(imu_samples_window_, window_us);
+  const float sim_rate_hz = rate_hz(sim_ticks_window_, window_us);
+  const float render_rate_hz = rate_hz(rendered_frames_window_, window_us);
 
   const sim::MaterialTotals totals = model_.world().totals();
   const sim::TickWorkStats work = model_.tick_work_stats();
