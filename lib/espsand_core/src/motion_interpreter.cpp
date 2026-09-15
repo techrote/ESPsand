@@ -81,8 +81,8 @@ void MotionInterpreter::update(const io::ImuSample& sample,
     const bool cooldown_elapsed =
         last_tap_us_ == 0U || sample.timestamp_us - last_tap_us_ >= 160000U;
     if (residual_magnitude >= 0.72F && cooldown_elapsed) {
-      snapshot_.tap_impulse =
-          clamp_unit(0.35F + (residual_magnitude - 0.72F) / 0.80F);
+      const float tap_strength = 0.35F + (residual_magnitude - 0.72F) / 0.80F;
+      snapshot_.tap_impulse = clamp_unit(tap_strength);
       last_tap_us_ = sample.timestamp_us;
     }
   }
