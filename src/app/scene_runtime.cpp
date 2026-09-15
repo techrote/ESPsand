@@ -15,8 +15,25 @@ constexpr std::uint64_t kSimulationPeriodUs = 16667;
 constexpr std::uint64_t kRenderPeriodUs = 16667;
 constexpr std::uint64_t kTelemetryPeriodUs = 1000000;
 constexpr std::uint64_t kDefaultSceneSeed = 0xE5007007ULL;
-constexpr std::uint8_t kSceneBrightness = 28;
-constexpr std::uint16_t kSceneExposureQ8 = 320;
+
+struct SceneRenderSettings {
+  std::uint16_t exposure_q8 = 320;
+  std::uint8_t brightness = 28;
+};
+
+SceneRenderSettings render_settings(sim::SceneId scene) noexcept {
+  switch (scene) {
+  case sim::SceneId::kSodiumWater:
+    return {340, 26};
+  case sim::SceneId::kOilFire:
+    return {300, 28};
+  case sim::SceneId::kLavaWater:
+  case sim::SceneId::kDeterminismFixture:
+  case sim::SceneId::kDynamicsFixture:
+    return {320, 28};
+  }
+  return {320, 28};
+}
 
 std::uint32_t material_mass(const sim::MaterialTotals& totals, sim::MaterialId material) noexcept {
   return totals.mass[sim::material_index(material)];
@@ -29,8 +46,12 @@ float rate_hz(std::uint32_t count, std::uint64_t window_us) noexcept {
   return static_cast<float>(count) * 1000000.0F / static_cast<float>(window_us);
 }
 
-void highlight_hot_steam(io::Frame8x8& frame, const sim::World& world,
-                         std::uint16_t reactions_applied) noexcept {
+bool is_reaction_highlight_material(sim::MaterialId material) noexcept {
+  return material == sim::MaterialId::kSteam || material == sim::MaterialId::kFire;
+}
+
+void highlight_hot_reaction(io::Frame8x8& frame, const sim::World& world,
+                            std::uint16_t reactions_applied) noexcept {
   if (reactions_applied == 0U) {
     return;
   }
@@ -39,7 +60,7 @@ void highlight_hot_steam(io::Frame8x8& frame, const sim::World& world,
   std::size_t hottest_index = 0;
   for (std::size_t index = 0; index < sim::kWorldCapacity; ++index) {
     const sim::Cell* cell = world.try_cell_index(index);
-    if (cell == nullptr || cell->material != sim::MaterialId::kSteam || cell->mass == 0U) {
+    if (cell == nullptr || !is_reaction_highlight_material(cell->material) || cell->mass == 0U) {
       continue;
     }
     if (hottest == nullptr || cell->temperature > hottest->temperature) {
@@ -71,13 +92,7 @@ void SceneRuntime::begin() {
   const bool touch_ok = touch_.begin();
   const bool imu_ok = imu_.begin();
   motion_.reset();
-
-  sim::ModelConfig config{};
-  config.seed = kDefaultSceneSeed;
-  config.scene = sim::SceneId::kLavaWater;
-  config.event_budget = 12;
-  config.reaction_budget = 12;
-  model_.init(config);
+  configure_scene(sim::SceneId::kLavaWater, kDefaultSceneSeed);
 
   const std::uint64_t now_us = clock_.now_us();
   next_imu_us_ = now_us;
@@ -88,12 +103,14 @@ void SceneRuntime::begin() {
 
   const auto imu_status = imu_.status();
   const auto touch_status = touch_.status();
-  char line[256];
+  const SceneRenderSettings settings = render_settings(model_.scene());
+  char line[288];
   std::snprintf(line, sizeof(line),
-                "espsand.scene start scene=lava_water seed=%llu sim_target_hz=60 "
+                "espsand.scene start scene=%s seed=%llu scene_count=%u sim_target_hz=60 "
                 "brightness=%u imu_init=%u imu_addr=0x%02X touch_hw=%u slider=%u combo=%u",
-                static_cast<unsigned long long>(model_.seed()), kSceneBrightness, imu_ok ? 1U : 0U,
-                imu_status.address, touch_ok ? 1U : 0U,
+                sim::scene_name(model_.scene()), static_cast<unsigned long long>(model_.seed()),
+                static_cast<unsigned>(sim::kProductSceneOrder.size()), settings.brightness,
+                imu_ok ? 1U : 0U, imu_status.address, touch_ok ? 1U : 0U,
                 touch_status.hardware_available && board::kTouchSliderConfigured ? 1U : 0U,
                 touch_status.hardware_available && board::kTouchComboConfigured ? 1U : 0U);
   diagnostics_.write_line(line);
@@ -173,6 +190,16 @@ sim::InputFrame SceneRuntime::compose_input() const noexcept {
   return frame;
 }
 
+void SceneRuntime::configure_scene(sim::SceneId scene, std::uint64_t seed) {
+  sim::ModelConfig config{};
+  config.seed = seed;
+  config.scene = scene;
+  config.event_budget = 12;
+  config.reaction_budget = 12;
+  model_.init(config);
+  latest_render_stats_ = {};
+}
+
 void SceneRuntime::run_simulation_tick(std::uint64_t now_us) {
   latest_input_ = compose_input();
   const std::uint64_t start_us = clock_.now_us();
@@ -185,25 +212,36 @@ void SceneRuntime::run_simulation_tick(std::uint64_t now_us) {
 }
 
 void SceneRuntime::render_scene() {
+  const SceneRenderSettings settings = render_settings(model_.scene());
   render::RenderConfig config{};
   config.mode = render::RenderMode::kBeauty;
-  config.exposure_q8 = kSceneExposureQ8;
+  config.exposure_q8 = settings.exposure_q8;
 
   render::RenderResult result = renderer_.render(model_.world(), config);
-  highlight_hot_steam(result.frame, model_.world(), model_.dynamics_stats().reactions_applied);
+  highlight_hot_reaction(result.frame, model_.world(), model_.dynamics_stats().reactions_applied);
   latest_render_stats_ = result.stats;
-  matrix_.present(result.frame, kSceneBrightness);
+  matrix_.present(result.frame, settings.brightness);
   ++rendered_frames_window_;
 }
 
 void SceneRuntime::handle_button(io::ButtonEvent event) {
+  char line[192];
   if (event == io::ButtonEvent::kShortPress) {
     model_.reset();
-    diagnostics_.write_line("input.button event=short action=reset scene=lava_water");
+    std::snprintf(line, sizeof(line), "input.button event=short action=reset scene=%s seed=%llu",
+                  sim::scene_name(model_.scene()),
+                  static_cast<unsigned long long>(model_.seed()));
+    diagnostics_.write_line(line);
   } else if (event == io::ButtonEvent::kLongPress) {
-    model_.reseed(model_.seed() + 1U);
-    diagnostics_.write_line(
-        "input.button event=long action=next_scene wrap=lava_water reseed=1 scene_count=1");
+    const sim::SceneId previous = model_.scene();
+    const sim::SceneId next = sim::next_product_scene(previous);
+    const std::uint64_t next_seed = model_.seed() + 1U;
+    configure_scene(next, next_seed);
+    std::snprintf(line, sizeof(line),
+                  "input.button event=long action=next_scene from=%s to=%s seed=%llu",
+                  sim::scene_name(previous), sim::scene_name(next),
+                  static_cast<unsigned long long>(next_seed));
+    diagnostics_.write_line(line);
   }
 
   latest_touch_ = {};
@@ -222,15 +260,14 @@ void SceneRuntime::emit_telemetry(std::uint64_t now_us) {
   const sim::MaterialTotals totals = model_.world().totals();
   const sim::TickWorkStats work = model_.tick_work_stats();
   const sim::DynamicsStats dynamics = model_.dynamics_stats();
-  const sim::LavaWaterSceneStats scene = model_.lava_water_stats();
   const render::OutputDecision output = matrix_.last_output_decision();
 
   char line[512];
   std::snprintf(
       line, sizeof(line),
-      "runtime scene=lava_water seed=%llu tick=%llu hash=%016llX imu_hz=%.1f sim_hz=%.1f "
+      "runtime scene=%s seed=%llu tick=%llu hash=%016llX imu_hz=%.1f sim_hz=%.1f "
       "render_hz=%.1f max_sim_us=%llu max_loop_us=%llu g=(%+.2f,%+.2f) shake=%.2f tap=%.2f",
-      static_cast<unsigned long long>(model_.seed()),
+      sim::scene_name(model_.scene()), static_cast<unsigned long long>(model_.seed()),
       static_cast<unsigned long long>(model_.tick()),
       static_cast<unsigned long long>(model_.state_hash()), static_cast<double>(imu_rate_hz),
       static_cast<double>(sim_rate_hz), static_cast<double>(render_rate_hz),
@@ -239,24 +276,7 @@ void SceneRuntime::emit_telemetry(std::uint64_t now_us) {
       static_cast<double>(latest_input_.gravity.y), static_cast<double>(latest_input_.shake_energy),
       static_cast<double>(latest_input_.tap_impulse));
   diagnostics_.write_line(line);
-
-  std::snprintf(
-      line, sizeof(line),
-      "scene.lava_water water=%lu lava=%lu crust=%lu steam=%lu react=%u move=%u fracture=%u "
-      "inject_lava=%u inject_water=%u touch_lava=%u burst=%u event=%u/%u/%u reaction=%u/%u/%u "
-      "render_minor=%u led=%u/%u load=%lu limited=%u",
-      static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kWater)),
-      static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kLava)),
-      static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kCrust)),
-      static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kSteam)),
-      dynamics.reactions_applied, dynamics.transport_moves, scene.crust_fractures,
-      scene.autonomous_lava_injections, scene.autonomous_water_injections,
-      scene.touch_lava_injections, scene.burst_pairs, work.events.used, work.events.limit,
-      work.events.dropped, work.reactions.used, work.reactions.limit, work.reactions.dropped,
-      latest_render_stats_.minority_preserved_pixels, output.requested_brightness,
-      output.applied_brightness, static_cast<unsigned long>(output.estimated_frame_load),
-      output.ceiling_limited || output.load_limited ? 1U : 0U);
-  diagnostics_.write_line(line);
+  emit_scene_telemetry(totals, work, dynamics, output);
 
   telemetry_window_start_us_ = now_us;
   imu_samples_window_ = 0;
@@ -264,6 +284,81 @@ void SceneRuntime::emit_telemetry(std::uint64_t now_us) {
   rendered_frames_window_ = 0;
   max_loop_us_ = 0;
   max_sim_tick_us_ = 0;
+}
+
+void SceneRuntime::emit_scene_telemetry(const sim::MaterialTotals& totals,
+                                        const sim::TickWorkStats& work,
+                                        const sim::DynamicsStats& dynamics,
+                                        const render::OutputDecision& output) {
+  char line[512];
+  switch (model_.scene()) {
+  case sim::SceneId::kLavaWater: {
+    const sim::LavaWaterSceneStats scene = model_.lava_water_stats();
+    std::snprintf(
+        line, sizeof(line),
+        "scene.lava_water water=%lu lava=%lu crust=%lu steam=%lu react=%u move=%u "
+        "fracture=%u inject_lava=%u inject_water=%u touch_lava=%u burst=%u "
+        "event=%u/%u/%u reaction=%u/%u/%u render_minor=%u led=%u/%u load=%lu limited=%u",
+        static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kWater)),
+        static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kLava)),
+        static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kCrust)),
+        static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kSteam)),
+        dynamics.reactions_applied, dynamics.transport_moves, scene.crust_fractures,
+        scene.autonomous_lava_injections, scene.autonomous_water_injections,
+        scene.touch_lava_injections, scene.burst_pairs, work.events.used, work.events.limit,
+        work.events.dropped, work.reactions.used, work.reactions.limit, work.reactions.dropped,
+        latest_render_stats_.minority_preserved_pixels, output.requested_brightness,
+        output.applied_brightness, static_cast<unsigned long>(output.estimated_frame_load),
+        output.ceiling_limited || output.load_limited ? 1U : 0U);
+    break;
+  }
+  case sim::SceneId::kSodiumWater: {
+    const sim::SodiumWaterSceneStats scene = model_.sodium_water_stats();
+    std::snprintf(
+        line, sizeof(line),
+        "scene.sodium_water water=%lu sodium=%lu fire=%lu steam=%lu react=%u impulse=%u "
+        "move=%u inject_sodium=%u inject_water=%u touch_sodium=%u burst=%u "
+        "event=%u/%u/%u reaction=%u/%u/%u led=%u/%u load=%lu limited=%u",
+        static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kWater)),
+        static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kSodiumLike)),
+        static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kFire)),
+        static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kSteam)),
+        dynamics.reactions_applied, dynamics.reaction_impulses, dynamics.transport_moves,
+        scene.autonomous_sodium_injections, scene.autonomous_water_injections,
+        scene.touch_sodium_injections, scene.burst_pairs, work.events.used, work.events.limit,
+        work.events.dropped, work.reactions.used, work.reactions.limit, work.reactions.dropped,
+        output.requested_brightness, output.applied_brightness,
+        static_cast<unsigned long>(output.estimated_frame_load),
+        output.ceiling_limited || output.load_limited ? 1U : 0U);
+    break;
+  }
+  case sim::SceneId::kOilFire: {
+    const sim::OilFireSceneStats scene = model_.oil_fire_stats();
+    std::snprintf(
+        line, sizeof(line),
+        "scene.oil_fire water=%lu oil=%lu fire=%lu smoke=%lu react=%u expired=%u move=%u "
+        "inject_oil=%u auto_ignite=%u touch_oil=%u combo_ignite=%u "
+        "event=%u/%u/%u reaction=%u/%u/%u led=%u/%u load=%lu limited=%u",
+        static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kWater)),
+        static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kOil)),
+        static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kFire)),
+        static_cast<unsigned long>(material_mass(totals, sim::MaterialId::kSmoke)),
+        dynamics.reactions_applied, dynamics.fire_cells_expired, dynamics.transport_moves,
+        scene.autonomous_oil_injections, scene.autonomous_ignitions, scene.touch_oil_injections,
+        scene.combo_ignitions, work.events.used, work.events.limit, work.events.dropped,
+        work.reactions.used, work.reactions.limit, work.reactions.dropped,
+        output.requested_brightness, output.applied_brightness,
+        static_cast<unsigned long>(output.estimated_frame_load),
+        output.ceiling_limited || output.load_limited ? 1U : 0U);
+    break;
+  }
+  case sim::SceneId::kDeterminismFixture:
+  case sim::SceneId::kDynamicsFixture:
+    std::snprintf(line, sizeof(line), "scene.%s unexpected_product_runtime=1",
+                  sim::scene_name(model_.scene()));
+    break;
+  }
+  diagnostics_.write_line(line);
 }
 
 void SceneRuntime::clear_one_shot_inputs() noexcept {
