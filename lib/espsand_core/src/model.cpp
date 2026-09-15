@@ -144,8 +144,7 @@ void Model::step(const InputFrame& input) noexcept {
   dynamics_stats_ = DynamicsStats{};
 
   if (config_.scene == SceneId::kDynamicsFixture) {
-    dynamics_stats_ =
-        dynamics_engine_.step(world_, frame, tick_, event_budget_, reaction_budget_);
+    dynamics_stats_ = dynamics_engine_.step(world_, frame, tick_, event_budget_, reaction_budget_);
   } else {
     step_determinism_fixture(frame);
   }
