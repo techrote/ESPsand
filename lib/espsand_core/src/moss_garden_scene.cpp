@@ -366,11 +366,10 @@ void MossGardenScene::initialize(World& world, Pcg32& prng) noexcept {
   static_cast<void>(world.set_cell(2, 10, left_shoot));
   static_cast<void>(world.set_cell(13, 10, right_shoot));
 
+  // Keep the autonomous starting mite on actual biomass. Touch adds further mites explicitly.
   mites_[0] = {2, 11, kMiteInitialEnergy, true};
-  if (prng.bounded(2U) != 0U) {
-    mites_[0].x = 3;
-  }
   mite_count_ = active_mite_count(mites_);
+  static_cast<void>(prng);
 }
 
 MossGardenSceneStats MossGardenScene::before_dynamics(MossGardenTickContext context) noexcept {
@@ -431,18 +430,6 @@ MossGardenSceneStats MossGardenScene::before_dynamics(MossGardenTickContext cont
     }
   }
 
-  const bool slider_due = context.input.slider_active && context.input.slider_strength >= 0.35F &&
-                          context.tick % kTouchMitePeriodTicks == 0U;
-  if (slider_due && context.event_budget.try_consume()) {
-    const std::uint8_t preferred_x = slider_x(context.input.slider_position);
-    for (MiteState& mite : mites_) {
-      if (!mite.active && place_mite_near_x(mite, context.world, preferred_x)) {
-        ++stats.touch_mite_spawns;
-        break;
-      }
-    }
-  }
-
   if (context.input.cap_combo_event && context.event_budget.try_consume()) {
     if (seed_moss_near_water(context.world, context.prng)) {
       ++stats.seed_pulses;
@@ -468,6 +455,24 @@ MossGardenSceneStats MossGardenScene::before_dynamics(MossGardenTickContext cont
 
   mite_count_ = active_mite_count(mites_);
   return stats;
+}
+
+void MossGardenScene::after_dynamics(MossGardenTickContext context,
+                                     MossGardenSceneStats& stats) noexcept {
+  const bool slider_due = context.input.slider_active && context.input.slider_strength >= 0.35F &&
+                          context.tick % kTouchMitePeriodTicks == 0U;
+  if (!slider_due || !context.event_budget.try_consume()) {
+    return;
+  }
+
+  const std::uint8_t preferred_x = slider_x(context.input.slider_position);
+  for (MiteState& mite : mites_) {
+    if (!mite.active && place_mite_near_x(mite, context.world, preferred_x)) {
+      ++stats.touch_mite_spawns;
+      break;
+    }
+  }
+  mite_count_ = active_mite_count(mites_);
 }
 
 MossGardenStateSnapshot MossGardenScene::snapshot() const noexcept {
