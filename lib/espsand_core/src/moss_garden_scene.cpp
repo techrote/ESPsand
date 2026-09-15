@@ -446,7 +446,7 @@ void MossGardenScene::after_dynamics(MossGardenTickContext context,
 
   const std::uint8_t preferred_x = slider_x(context.input.slider_position);
   if (inject_rain(context.world, preferred_x) != 0U) {
-    ++stats.touch_rain_pulses;
+    ++stats.rain_pulses;
   }
 }
 
