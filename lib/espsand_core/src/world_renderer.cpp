@@ -101,6 +101,19 @@ std::uint32_t lerp_channel(std::uint32_t base, std::uint32_t accent, std::uint8_
   return (base * inverse + accent * weight + 127U) / 255U;
 }
 
+void scale_color_q8(LinearRgb& color, std::uint16_t scale_q8) noexcept {
+  color.r = (color.r * scale_q8 + 128U) / 256U;
+  color.g = (color.g * scale_q8 + 128U) / 256U;
+  color.b = (color.b * scale_q8 + 128U) / 256U;
+}
+
+std::uint16_t coverage_scale_q8(std::uint8_t occupied_samples) noexcept {
+  // A partially occupied logical 2x2 block must not project as a fully filled physical LED.
+  // Keep thin one-cell structures visible while preserving a clear difference between 1/4 and 4/4 fill.
+  constexpr std::array<std::uint16_t, 5> kCoverageScale{{0U, 136U, 176U, 216U, 256U}};
+  return kCoverageScale[std::min<std::size_t>(occupied_samples, 4U)];
+}
+
 std::uint8_t tone_map(std::uint32_t linear, std::uint16_t exposure_q8) noexcept {
   const std::uint64_t scaled = (static_cast<std::uint64_t>(linear) * exposure_q8 + 128U) / 256U;
   if (scaled == 0U) {
@@ -152,6 +165,7 @@ RenderResult WorldRenderer::render(const sim::World& world,
       std::uint8_t diagnostic_mass = 0;
       std::int16_t diagnostic_temperature = 0;
       std::uint32_t block_mass = 0;
+      std::uint8_t occupied_samples = 0;
 
       for (std::size_t local_y = 0; local_y < 2U; ++local_y) {
         for (std::size_t local_x = 0; local_x < 2U; ++local_x) {
@@ -181,6 +195,7 @@ RenderResult WorldRenderer::render(const sim::World& world,
             continue;
           }
 
+          ++occupied_samples;
           const LinearRgb shaded = shade_cell(*cell, style);
           aggregate.r += shaded.r * cell->mass;
           aggregate.g += shaded.g * cell->mass;
@@ -226,6 +241,7 @@ RenderResult WorldRenderer::render(const sim::World& world,
       aggregate.r /= total_mass;
       aggregate.g /= total_mass;
       aggregate.b /= total_mass;
+      scale_color_q8(aggregate, coverage_scale_q8(occupied_samples));
 
       const std::uint8_t weight = accent_weight(accent_importance);
       if (weight != 0U) {
