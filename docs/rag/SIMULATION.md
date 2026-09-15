@@ -97,9 +97,9 @@ increment model tick
 
 `before_dynamics` owns autonomous/source/lifecycle policy and non-direct events.
 
-`after_dynamics` is reserved for direct spatial slider actions. Its purpose is presentation/interaction timing: a touched secondary material/actor is inserted after the current physics step, so it exists at approximately the touched X in the rendered model state before the next tick is allowed to move/react it.
+`after_dynamics` is reserved for direct spatial slider actions. Its purpose is presentation/interaction timing: a touched secondary material/event is inserted after the current physics step, so it exists at approximately the touched X in the rendered model state before the next tick is allowed to move/react it.
 
-The new object is ordinary model state. On the following tick it obeys exactly the same shared dynamics/ecology rules as autonomous material.
+The new state is ordinary model state. On the following tick it obeys exactly the same shared dynamics/ecology rules as autonomous material.
 
 Fixtures remain unaffected by this seam.
 
@@ -142,7 +142,7 @@ Sparse initial state uses roughly:
 
 Growth remains moisture-gated and bounded. New moss cannot cross the 15-cell material ceiling; reinforcement of existing cells can continue without increasing population.
 
-Slider post-step action activates/places an inactive mite on moss near selected X. Combo remains a bounded moss seed event near moisture. Strong motion still scatters mites.
+Slider post-step action injects rain/water near selected X. Combo remains a bounded moss seed event near moisture. Strong motion still scatters mites. Touch does not create additional mites; agent population remains part of the autonomous ecology.
 
 Mite state remains a fixed three-slot array and is included in state hashing because it affects future ecology.
 
