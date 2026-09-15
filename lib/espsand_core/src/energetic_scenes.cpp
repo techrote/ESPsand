@@ -308,11 +308,11 @@ void OilFireScene::initialize(World& world, Pcg32& prng) const noexcept {
     static_cast<void>(world.set_cell(point[0], point[1], water));
   }
 
-  // Keep one adjacent fuel pair so the sparse scene still demonstrates real propagation.
+  // A short vertical fuel column guarantees genuine shared propagation while keeping the scene sparse.
   // clang-format off
   constexpr std::array<std::array<int, 2>, 10> kOilPockets{{
-      {{0, 11}}, {{1, 11}}, {{4, 12}}, {{5, 9}}, {{7, 11}},
-      {{8, 8}}, {{10, 10}}, {{12, 12}}, {{13, 9}}, {{15, 11}},
+      {{0, 9}}, {{0, 10}}, {{0, 11}}, {{0, 12}}, {{4, 12}},
+      {{5, 9}}, {{8, 8}}, {{10, 10}}, {{13, 9}}, {{15, 11}},
   }};
   // clang-format on
   for (std::size_t index = 0; index < kOilPockets.size(); ++index) {
@@ -322,7 +322,9 @@ void OilFireScene::initialize(World& world, Pcg32& prng) const noexcept {
     static_cast<void>(world.set_cell(point[0], point[1], oil));
   }
 
-  Cell* ignition = world.try_cell(0, 11);
+  // Fire rises through the column, swapping with fuel and leaving an adjacent fire/oil pair for
+  // the shared reaction pass rather than relying on a scripted propagation effect.
+  Cell* ignition = world.try_cell(0, 12);
   if (ignition != nullptr) {
     static_cast<void>(ignite_cell(*ignition));
   }
