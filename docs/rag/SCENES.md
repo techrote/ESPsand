@@ -2,20 +2,25 @@
 
 Scenes are curated demonstrations built on shared material/reaction primitives. They should look distinct even when viewed only as an 8×8 light field.
 
-## Scene 1 — Lava + Water
+## Scene 1 — Lava + Water — ES-007 baseline
 
-**Visual identity:** hot orange/red viscous material, dark cooling crust, blue/cyan water, bright steam flashes.
+**Visual identity:** hot orange/red viscous lava, deliberately dark cooled crust, blue/cyan water and bright steam/reaction highlights.
 
-**Autonomous loop:** lava drips or accumulates into a water reservoir, generating steam and crust while the board orientation changes the contact geometry.
+**Autonomous loop:** the deterministic initial state contains a substantial water reservoir, a hot lava body and one seeded contact point. The scene then periodically injects bounded lava and slower water replenishment from the upper interior so it remains active without user input. All movement, heat exchange, lava/water -> crust/steam conversion and gas rise use the shared ES-006 mechanics.
 
-**Inputs:**
-- cap A: add lava;
-- cap B: add water;
-- combo/strong disturbance: pressure burst or extra reaction pulse;
-- shake/tap: fracture crust and remix contact surfaces;
-- tilt: redirects both liquids.
+**Implemented inputs:**
 
-**Must show:** obvious thermal colour gradient, water/lava contact reaction, persistent cooled solid left behind.
+- tilt redirects shared gravity transport for both liquids and the buoyant steam phase;
+- shake/tap/general motion can relocate a small bounded number of existing crust cells, reopening contact surfaces without creating or destroying their mass;
+- the accepted pinch-gated coarse slider injects one bounded lava cell near its 0..1 horizontal position at a capped cadence;
+- the accepted common-mode combo event injects one adjacent lava/water pair into available interior space, after which the ordinary shared reaction engine performs the conversion;
+- isolated touch-noise input contributes only through the same bounded disturbance interpretation; it is not hidden randomness.
+
+The physically rejected independent `cap_a` / `cap_b` semantics are **not** resurrected for this scene. Lava + Water remains fully usable with BOOT + IMU when capacitive sensing is unavailable.
+
+**Lifecycle:** short BOOT restores the exact configured seed/initial state. While this is the only product scene, long BOOT follows the product “next scene” intent by wrapping to Lava + Water with the next deterministic seed. ES-008 will replace that one-scene wrap with real scene advance when Scene 2 exists.
+
+**Must show / automated evidence:** fixed-seed host tests require deterministic initialization/replay, meaningful multi-axis tilt divergence, lava/water contact producing persistent crust plus steam, bounded shake fracture, bounded touch injection, exact reset, renderer distinction and long randomized bounded replay. Physical visual quality and handling response remain a board-validation gate; CI cannot claim those observations.
 
 ## Scene 2 — Sodium-like Reactive Particle + Water
 
@@ -31,7 +36,7 @@ Scenes are curated demonstrations built on shared material/reaction primitives. 
 
 **Must show:** local movement caused by reaction impulse, finite reactant lifetime, no unbounded flash loop.
 
-This scene is simulation-only and must not provide real reactive-metal experimental instructions.
+This scene is simulation-only and must not provide real reactive-metal experimental instructions. Its capacitive mappings must be reconciled against the accepted ES-003A slider/combo truth before implementation; the aspirational A/B wording above is not authorization to re-enable rejected bare-board zones.
 
 ## Scene 3 — Oil Fire
 
@@ -48,6 +53,8 @@ This scene is simulation-only and must not provide real reactive-metal experimen
 
 **Must show:** fuel depletion, flame spread, visible extinction rather than permanent decorative fire.
 
+As with Scene 2, future implementation must translate the old A/B aspiration into the actually supported ES-003A slider/combo semantics rather than exposing nonexistent independent zones.
+
 ## Scene 4 — Moss Garden + Mites
 
 **Visual identity:** subdued wet substrate, spreading green moss/plant shoots and 1–3 contrasting moving mite pixels/agents.
@@ -62,6 +69,8 @@ This scene is simulation-only and must not provide real reactive-metal experimen
 
 **Must show:** growth over time, at least one agent visibly moving independently, biomass loss caused by feeding, recovery when conditions permit.
 
+Future capacitive mappings remain subject to the accepted coarse slider/combo hardware truth.
+
 ## Scene 5 — Tracer / Dissolution Plume
 
 **Visual identity:** localized powder/concentration source blooms into a fluid field whose colour changes dramatically as concentration decreases. The palette may intentionally echo the observed sequence of earth/deep red or orange through lime/green to yellow.
@@ -75,6 +84,8 @@ This scene is simulation-only and must not provide real reactive-metal experimen
 - tilt: moves bulk carrier fluid.
 
 **Must show:** concentration-dependent colour, visible plume transport, eventual dilution rather than random colour cycling.
+
+Future capacitive mappings remain subject to the accepted coarse slider/combo hardware truth.
 
 ## Scene 6+ candidates
 
@@ -91,7 +102,7 @@ Selection criterion is **maximum new visible behaviour per implementation comple
 
 ## Scene order and persistence
 
-The firmware should expose a stable default scene order. Scene selection may optionally persist across reboot, but no persistence mechanism should complicate early development. A build-time default scene and serial override are useful for debugging.
+The firmware should expose a stable default scene order. ES-007 is the first product scene and therefore boots directly by default. Until ES-008 adds Scene 2, long BOOT wraps to the same scene with a deterministic seed increment; short BOOT restores the current seed exactly. Scene selection may optionally persist across reboot later, but no persistence mechanism should complicate early development.
 
 ## Content quality bar
 
