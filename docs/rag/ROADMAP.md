@@ -54,13 +54,24 @@ ES-007 establishes the first complete product scene and the normal product runti
 
 The first CI integration probe passed 66/66 native tests and built both firmware targets. Physical orientation, visible quality, actual rates and thermal/brightness behavior still require the documented board checklist; these are not inferred from CI.
 
-### C2. Sodium-like + Water and Oil + Fire
+### C2. Sodium-like + Water and Oil + Fire — ES-008 baseline
 
-Next: add two visually distinct energetic scenes using the same shared core and the now-established product runtime/scene lifecycle. Avoid scene-local physics duplication. Future touch mappings must use the actual slider/combo capability rather than old aspirational A/B buttons.
+ES-008 adds two product scenes without duplicating the shared physics stack:
+
+- Sodium-like + Water uses the centralized sodium-like/water reaction, generic reaction impulse, shared particle/liquid transport, finite fire and buoyant steam/smoke. Scene policy supplies only deterministic setup, sparse reactant/water replenishment and bounded optional slider/combo injection.
+- Oil + Fire uses centralized oil density/mobility, the common oil/fire reaction and generic fire-to-smoke lifetime. Its autonomous cycle deliberately includes fuel consumption and an extinction interval before sparse refill and re-ignition.
+- the stable product catalogue is now `Lava + Water -> Sodium-like + Water -> Oil + Fire -> Lava + Water`;
+- long BOOT advances through that catalogue; short BOOT resets the current seeded scene;
+- rejected independent A/B touch zones remain disabled. Slider/combo are the only optional product touch semantics, and all three scenes remain demonstrable with BOOT + IMU alone;
+- scene-specific schema IDs/stats extend deterministic state hashing without changing older scene IDs;
+- runtime rendering still uses `WorldRenderer` plus the single `MatrixOutput` limiter, with sparse reaction highlighting generalized to actual hot steam/fire cells;
+- ES-008 native tests lock finite consumption/extinction, reaction impulses, scene order, fixed-seed replay, rendering distinction and randomized bounded replay for both new scenes.
+
+Physical visual distinction, real handling response, measured scene timing and sustained output comfort remain explicit board-validation work rather than CI claims.
 
 ### C3. Moss Garden + Mites
 
-Add slow ecology: moisture-dependent moss/plant growth, 1–3 deterministic mobile mite-like agents, feeding, depletion and recovery.
+Next: add slow ecology with moisture-dependent moss/plant growth, 1–3 deterministic mobile mite-like agents, feeding, depletion and recovery. It should extend scene variety rather than modifying the already-shared energetic mechanics.
 
 ## Milestone D — Breadth and showcase polish
 
