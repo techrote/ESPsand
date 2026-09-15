@@ -71,6 +71,22 @@ void add_lava_water_stats(StableHasher& hasher, const LavaWaterSceneStats& stats
   hasher.add_u8(stats.last_injection_x);
 }
 
+void add_sodium_water_stats(StableHasher& hasher, const SodiumWaterSceneStats& stats) noexcept {
+  hasher.add_u16(stats.autonomous_sodium_injections);
+  hasher.add_u16(stats.autonomous_water_injections);
+  hasher.add_u16(stats.touch_sodium_injections);
+  hasher.add_u16(stats.burst_pairs);
+  hasher.add_u8(stats.last_injection_x);
+}
+
+void add_oil_fire_stats(StableHasher& hasher, const OilFireSceneStats& stats) noexcept {
+  hasher.add_u16(stats.autonomous_oil_injections);
+  hasher.add_u16(stats.autonomous_ignitions);
+  hasher.add_u16(stats.touch_oil_injections);
+  hasher.add_u16(stats.combo_ignitions);
+  hasher.add_u8(stats.last_injection_x);
+}
+
 Cell fixture_marker_cell() noexcept {
   Cell cell{};
   cell.material = MaterialId::kTracer;
@@ -117,6 +133,8 @@ void Model::init(const ModelConfig& config) noexcept {
   case SceneId::kDeterminismFixture:
   case SceneId::kDynamicsFixture:
   case SceneId::kLavaWater:
+  case SceneId::kSodiumWater:
+  case SceneId::kOilFire:
     break;
   default:
     config_.scene = SceneId::kDeterminismFixture;
@@ -134,6 +152,8 @@ void Model::reset() noexcept {
   fixture_ = FixtureStateSnapshot{};
   dynamics_stats_ = DynamicsStats{};
   lava_water_stats_ = LavaWaterSceneStats{};
+  sodium_water_stats_ = SodiumWaterSceneStats{};
+  oil_fire_stats_ = OilFireSceneStats{};
 
   switch (config_.scene) {
   case SceneId::kDynamicsFixture:
@@ -141,6 +161,12 @@ void Model::reset() noexcept {
     break;
   case SceneId::kLavaWater:
     lava_water_scene_.initialize(world_, prng_);
+    break;
+  case SceneId::kSodiumWater:
+    sodium_water_scene_.initialize(world_, prng_);
+    break;
+  case SceneId::kOilFire:
+    oil_fire_scene_.initialize(world_, prng_);
     break;
   case SceneId::kDeterminismFixture:
     initialize_fixture();
@@ -160,6 +186,8 @@ void Model::step(const InputFrame& input) noexcept {
   reaction_budget_.reset(config_.reaction_budget);
   dynamics_stats_ = DynamicsStats{};
   lava_water_stats_ = LavaWaterSceneStats{};
+  sodium_water_stats_ = SodiumWaterSceneStats{};
+  oil_fire_stats_ = OilFireSceneStats{};
 
   switch (config_.scene) {
   case SceneId::kDynamicsFixture:
@@ -168,6 +196,16 @@ void Model::step(const InputFrame& input) noexcept {
   case SceneId::kLavaWater:
     lava_water_stats_ =
         lava_water_scene_.before_dynamics({world_, prng_, frame, tick_, event_budget_});
+    dynamics_stats_ = dynamics_engine_.step(world_, frame, tick_, event_budget_, reaction_budget_);
+    break;
+  case SceneId::kSodiumWater:
+    sodium_water_stats_ =
+        sodium_water_scene_.before_dynamics({world_, prng_, frame, tick_, event_budget_});
+    dynamics_stats_ = dynamics_engine_.step(world_, frame, tick_, event_budget_, reaction_budget_);
+    break;
+  case SceneId::kOilFire:
+    oil_fire_stats_ =
+        oil_fire_scene_.before_dynamics({world_, prng_, frame, tick_, event_budget_});
     dynamics_stats_ = dynamics_engine_.step(world_, frame, tick_, event_budget_, reaction_budget_);
     break;
   case SceneId::kDeterminismFixture:
@@ -194,12 +232,20 @@ LavaWaterSceneStats Model::lava_water_stats() const noexcept {
   return lava_water_stats_;
 }
 
+SodiumWaterSceneStats Model::sodium_water_stats() const noexcept {
+  return sodium_water_stats_;
+}
+
+OilFireSceneStats Model::oil_fire_stats() const noexcept {
+  return oil_fire_stats_;
+}
+
 bool Model::invariants_hold() const noexcept {
   if (!world_.invariants_hold()) {
     return false;
   }
 
-  if (config_.scene == SceneId::kDynamicsFixture || config_.scene == SceneId::kLavaWater) {
+  if (uses_shared_dynamics(config_.scene)) {
     return true;
   }
 
@@ -221,11 +267,15 @@ std::uint64_t Model::state_hash() const noexcept {
   hasher.add_u16(static_cast<std::uint16_t>(kWorldWidth));
   hasher.add_u16(static_cast<std::uint16_t>(kWorldHeight));
   hasher.add_u8(static_cast<std::uint8_t>(config_.scene));
-  if (config_.scene == SceneId::kDynamicsFixture || config_.scene == SceneId::kLavaWater) {
+  if (uses_shared_dynamics(config_.scene)) {
     hasher.add_u32(kDynamicsSchemaVersion);
   }
   if (config_.scene == SceneId::kLavaWater) {
     hasher.add_u32(kLavaWaterSceneSchemaVersion);
+  } else if (config_.scene == SceneId::kSodiumWater) {
+    hasher.add_u32(kSodiumWaterSceneSchemaVersion);
+  } else if (config_.scene == SceneId::kOilFire) {
+    hasher.add_u32(kOilFireSceneSchemaVersion);
   }
 
   hasher.add_u64(config_.seed);
@@ -246,6 +296,10 @@ std::uint64_t Model::state_hash() const noexcept {
   add_budget_stats(hasher, reaction_budget_.stats());
   if (config_.scene == SceneId::kLavaWater) {
     add_lava_water_stats(hasher, lava_water_stats_);
+  } else if (config_.scene == SceneId::kSodiumWater) {
+    add_sodium_water_stats(hasher, sodium_water_stats_);
+  } else if (config_.scene == SceneId::kOilFire) {
+    add_oil_fire_stats(hasher, oil_fire_stats_);
   }
 
   for (const Cell& cell : world_.cells()) {
