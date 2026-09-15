@@ -87,6 +87,29 @@ void add_oil_fire_stats(StableHasher& hasher, const OilFireSceneStats& stats) no
   hasher.add_u8(stats.last_injection_x);
 }
 
+void add_moss_garden_stats(StableHasher& hasher, const MossGardenSceneStats& stats) noexcept {
+  hasher.add_u16(stats.growth_cells);
+  hasher.add_u16(stats.reinforced_cells);
+  hasher.add_u16(stats.mite_moves);
+  hasher.add_u16(stats.feeds);
+  hasher.add_u16(stats.starved);
+  hasher.add_u16(stats.rain_pulses);
+  hasher.add_u16(stats.seed_pulses);
+  hasher.add_u16(stats.scatter_events);
+}
+
+void add_moss_garden_state(StableHasher& hasher,
+                           const MossGardenStateSnapshot& state) noexcept {
+  hasher.add_u8(state.mite_count);
+  hasher.add_u16(state.growth_energy);
+  for (const MiteState& mite : state.mites) {
+    hasher.add_u8(mite.x);
+    hasher.add_u8(mite.y);
+    hasher.add_u8(mite.energy);
+    hasher.add_u8(mite.active ? 1U : 0U);
+  }
+}
+
 Cell fixture_marker_cell() noexcept {
   Cell cell{};
   cell.material = MaterialId::kTracer;
@@ -135,6 +158,7 @@ void Model::init(const ModelConfig& config) noexcept {
   case SceneId::kLavaWater:
   case SceneId::kSodiumWater:
   case SceneId::kOilFire:
+  case SceneId::kMossGarden:
     break;
   default:
     config_.scene = SceneId::kDeterminismFixture;
@@ -154,6 +178,7 @@ void Model::reset() noexcept {
   lava_water_stats_ = LavaWaterSceneStats{};
   sodium_water_stats_ = SodiumWaterSceneStats{};
   oil_fire_stats_ = OilFireSceneStats{};
+  moss_garden_stats_ = MossGardenSceneStats{};
 
   switch (config_.scene) {
   case SceneId::kDynamicsFixture:
@@ -167,6 +192,9 @@ void Model::reset() noexcept {
     break;
   case SceneId::kOilFire:
     oil_fire_scene_.initialize(world_, prng_);
+    break;
+  case SceneId::kMossGarden:
+    moss_garden_scene_.initialize(world_, prng_);
     break;
   case SceneId::kDeterminismFixture:
     initialize_fixture();
@@ -188,6 +216,7 @@ void Model::step(const InputFrame& input) noexcept {
   lava_water_stats_ = LavaWaterSceneStats{};
   sodium_water_stats_ = SodiumWaterSceneStats{};
   oil_fire_stats_ = OilFireSceneStats{};
+  moss_garden_stats_ = MossGardenSceneStats{};
 
   switch (config_.scene) {
   case SceneId::kDynamicsFixture:
@@ -205,6 +234,11 @@ void Model::step(const InputFrame& input) noexcept {
     break;
   case SceneId::kOilFire:
     oil_fire_stats_ = oil_fire_scene_.before_dynamics({world_, prng_, frame, tick_, event_budget_});
+    dynamics_stats_ = dynamics_engine_.step(world_, frame, tick_, event_budget_, reaction_budget_);
+    break;
+  case SceneId::kMossGarden:
+    moss_garden_stats_ =
+        moss_garden_scene_.before_dynamics({world_, prng_, frame, tick_, event_budget_});
     dynamics_stats_ = dynamics_engine_.step(world_, frame, tick_, event_budget_, reaction_budget_);
     break;
   case SceneId::kDeterminismFixture:
@@ -239,9 +273,21 @@ OilFireSceneStats Model::oil_fire_stats() const noexcept {
   return oil_fire_stats_;
 }
 
+MossGardenSceneStats Model::moss_garden_stats() const noexcept {
+  return moss_garden_stats_;
+}
+
+MossGardenStateSnapshot Model::moss_garden_state() const noexcept {
+  return moss_garden_scene_.snapshot();
+}
+
 bool Model::invariants_hold() const noexcept {
   if (!world_.invariants_hold()) {
     return false;
+  }
+
+  if (config_.scene == SceneId::kMossGarden) {
+    return moss_garden_scene_.invariants_hold(world_);
   }
 
   if (uses_shared_dynamics(config_.scene)) {
@@ -275,6 +321,8 @@ std::uint64_t Model::state_hash() const noexcept {
     hasher.add_u32(kSodiumWaterSceneSchemaVersion);
   } else if (config_.scene == SceneId::kOilFire) {
     hasher.add_u32(kOilFireSceneSchemaVersion);
+  } else if (config_.scene == SceneId::kMossGarden) {
+    hasher.add_u32(kMossGardenSceneSchemaVersion);
   }
 
   hasher.add_u64(config_.seed);
@@ -299,6 +347,9 @@ std::uint64_t Model::state_hash() const noexcept {
     add_sodium_water_stats(hasher, sodium_water_stats_);
   } else if (config_.scene == SceneId::kOilFire) {
     add_oil_fire_stats(hasher, oil_fire_stats_);
+  } else if (config_.scene == SceneId::kMossGarden) {
+    add_moss_garden_stats(hasher, moss_garden_stats_);
+    add_moss_garden_state(hasher, moss_garden_scene_.snapshot());
   }
 
   for (const Cell& cell : world_.cells()) {
