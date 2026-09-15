@@ -12,87 +12,90 @@ Automate everything that does not genuinely require the physical board. Never fa
 
 Pure core builds under C++17 with `-Wall -Wextra -Wpedantic -Werror` and Unity tests.
 
-Existing ES-004 through ES-008 suites continue to cover deterministic state/PRNG, renderer/output limiting, shared dynamics/reactions, Lava + Water, Sodium-like + Water and Oil + Fire.
+Existing ES-004 through ES-009 suites continue to cover deterministic state/PRNG, renderer/output limiting, shared dynamics/reactions, all four product scenes, bounded ecology/agents, temporal persistence and full-perimeter product worlds.
 
-ES-009 adds **12 Moss Garden / presentation tests**:
+### Readability regression suite — issue #35
 
-1. every product scene initializes with zero wall mass reserved for containment;
-2. deterministic Moss Garden initialization contains water, moss and two active mites;
-3. removing all water prevents growth/reinforcement;
-4. a wet habitat produces bounded growth/reinforcement;
-5. mites feed on moss and gain energy;
-6. mites starve/deactivate without biomass while invariants remain valid;
-7. a 500-tick duplicate-model trace locks deterministic ecology/agent paths;
-8. opposite tilt directions change future moss geometry/state;
-9. mite coordinates move independently of material cells;
-10. mite overlay remains visible after 16x16 -> 8x8 projection;
-11. temporal RGB persistence is deterministic and bounded;
-12. slider rain and shake scatter remain inside event budget.
+`test_readability` adds four focused guards against the physical blockiness regression:
 
-The existing energetic catalogue test is also updated for the four-scene order and Moss Garden name.
+1. **Coverage preservation:** a physical block sourced by one occupied logical subcell must project with lower RGB energy than the same material filling all four logical subcells.
+2. **Uniform-liquid structure:** a completely uniform 16x16 water world must render byte-identically on repeat, expose at least four non-black RGB values, and contain no exact-identical horizontal/vertical run longer than four physical LEDs.
+3. **Initial product diversity:** every product scene must begin with at least six non-black physical RGB values and no exact-identical non-black run longer than four LEDs.
+4. **Settled product diversity:** after 180 downward-gravity ticks, every product scene must still expose at least four non-black RGB values, have no exact-identical non-black run longer than five LEDs, and retain model invariants.
 
-The first full ES-009 implementation probe passed **91/91 native test cases**. Existing Lava, Sodium, Oil, renderer and shared-dynamics suites remained green after the product-scene re-composition.
+These tests establish deterministic spatial diversity and protect against obvious large flat blocks. They intentionally do not encode a subjective aesthetic score.
 
-### Firmware compile
+### Existing behavioral regression
+
+The readability work keeps the full existing behavioral suites rather than replacing them with projection tests. In particular:
+
+- Lava + Water still locks deterministic setup/replay, crust+steam reaction, tilt divergence, bounded crust remixing, touch events and long randomized stress;
+- Sodium-like + Water still locks finite reactant consumption, shared reaction impulse, fixed-seed replay and bounded inputs;
+- Oil + Fire still locks oil-over-water identity, finite fuel consumption, fire expiry/extinction, refill/re-ignition and deterministic replay;
+- Moss Garden still locks moisture-gated growth, feeding/energy, starvation, tilt-dependent ecology, independent mite motion, overlay visibility and bounded external events;
+- renderer/dynamics/foundation/board/touch suites remain unchanged except where a test explicitly encoded superseded slab quantities.
+
+Two initial-material quantity guards were deliberately recalibrated rather than adding slab material back: Lava now requires at least 12k water and 2k lava mass; Sodium requires over 10k water plus finite reactant. All causal behavior tests remain intact.
+
+### Green implementation probe
+
+CI run **#116 / 34938038488** passed on implementation head `ff2f07057f9e089716fc414fb29a696fc4e1fee2`:
+
+- formatting: pass across **74 C/C++ source files**;
+- native tests: **95/95 pass**;
+- `test_readability`: **4/4 pass**;
+- normal `esp32s3`: **SUCCESS**, RAM **34,824 / 327,680 (10.6%)**, flash **457,749 / 1,310,720 (34.9%)**;
+- `esp32s3_bringup`: **SUCCESS**, RAM **31,132 / 327,680 (9.5%)**, flash **408,429 / 1,310,720 (31.2%)**;
+- no project/compiler warnings observed; only GitHub Actions Node-runtime deprecation notices.
+
+The final merge gate must repeat the full verification on the exact documented head.
+
+## Deterministic trace policy
+
+The original ES-004 golden trace remains unchanged.
+
+`Model::state_hash()` remains a non-cryptographic replay identity over future-affecting state. Issue #35 deliberately advances Lava/Sodium/Oil schemas to version 3 because their model topology/source geometry changed. Moss remains schema 1 because its correction is renderer-only.
+
+Coverage-aware projection, deterministic structural shading and runtime RGB persistence do not enter model hashes because none can affect future simulation.
+
+Unexplained duplicate-model divergence remains a defect.
+
+## Firmware compile
 
 CI builds:
 
 - normal `esp32s3` product firmware;
 - `esp32s3_bringup` hardware-diagnostic firmware.
 
-Successful ES-009 probe figures:
+The readability renderer adds only a small firmware-size increase relative to ES-009; the green implementation probe remained at 10.6% RAM and 34.9% application flash.
 
-- product: **34,824 / 327,680 RAM (10.6%)**, **456,241 / 1,310,720 flash (34.8%)**;
-- bring-up: **31,132 / 327,680 RAM (9.5%)**, **408,429 / 1,310,720 flash (31.2%)**.
+## Formatting
 
-The product build compiled Moss Garden, fixed agent state and scene-effects persistence/overlay code. No project/compiler warnings were observed; GitHub Actions emitted only its own Node-runtime deprecation notices.
+`tools/format.py --check` applies the repository clang-format contract to all C/C++ source and test files. The issue-#35 implementation probe checked 74 files successfully.
 
-### Formatting
+## Physical validation gates — readability correction #35
 
-The successful probe checked **73 C/C++ source files** under the repository clang-format contract.
+CI cannot prove the user's readability complaint is solved. After flashing corrected `main`, evaluate:
 
-## Deterministic trace policy
-
-The original ES-004 golden trace remains unchanged.
-
-`Model::state_hash()` remains a non-cryptographic versioned replay identity over explicit future-affecting state. ES-009 deliberately bumps schemas for the three re-composed chemistry scenes and gives Moss Garden its own schema.
-
-Moss Garden hashing includes mite positions/energy/active state and growth energy. RGB presentation history is excluded because it cannot affect future simulation.
-
-Intentional scene semantic changes require deliberate schema/test updates. Unexplained duplicate-model divergence is a defect.
-
-## Physical validation gates — ES-009
-
-CI does **not** prove the user's core readability complaint is solved. After flashing current ES-009 `main`, collect physical evidence:
-
-1. **Perimeter recovery:** confirm the outer physical ring is no longer a static/dim containment frame. All 28 perimeter LEDs should be available to ordinary scene content as material reaches their 2x2 source blocks.
-2. **Scene order:** long BOOT cycles Lava -> Sodium -> Oil -> Moss -> Lava; short BOOT resets current scene/seed.
-3. **Orientation:** tilt all four directions and verify shared gravity follows the intended matrix direction.
-4. **Lava readability:** look for a coherent central hot source entering a broad blue basin, with dark crust and pale steam after contact.
-5. **Sodium readability:** paired bright drops should be visible before finite reaction/fire/steam events.
-6. **Oil readability:** broad oil layer and left-originating flame front should read as fuel/front behavior; the fire must still visibly gutter out before refill/re-ignition.
-7. **Moss readability:** green biomass/plant growth should remain stable enough to recognize, while 1–3 magenta/white mites move independently and feeding eventually creates/rearranges clearings.
-8. **Tilt-to-ecology causality:** leave Moss Garden tilted in different orientations and confirm water/moisture placement alters where later growth succeeds; this is intentionally slower than the chemistry scenes.
-9. **Persistence quality:** confirm motion is easier to track and less jittery without feeling excessively smeared/laggy. Reaction highlights and mites should remain crisp because they are applied after base-frame persistence.
-10. **Motion/touch:** shake should scatter mites/usefully disturb scenes without corrupting gravity. If touch is usable, slider rain/material injection and combo scene events should be bounded; A/B zones remain absent.
-11. **Timing:** collect `imu_hz`, `sim_hz`, `render_hz`, `max_sim_us`, `max_loop_us`, work counters and scene counters for several minutes across all scenes.
-12. **Limiter/soak:** confirm requested/applied brightness/load telemetry remains present and run the existing 30–60 minute-or-longer multi-scene soak before changing the 32/255 / 4096-unit provisional LED policy.
+1. **Coverage:** thin one-logical-cell streams/shorelines should look visibly less full than dense 2x2 regions instead of inflating into identical square pixels.
+2. **Lava:** the hot source should read as a narrow/meandering stream meeting an irregular water body rather than two large rectangles.
+3. **Sodium:** individual bright drops should be trackable against an uneven pool before finite reaction events.
+4. **Oil:** fuel should read as separated ribbons/pockets and the fire as a spreading/depleting front rather than a broad amber/orange slab.
+5. **Moss:** blue/green regions should retain coherent ecology while showing enough internal structure to avoid large featureless blocks.
+6. **World-locked texture:** structural contrast should stay attached to material/world structure rather than twinkle like decorative random noise.
+7. **Persistence:** frame continuity should remain useful without excessive smear; reaction highlights and mites should remain crisp.
+8. **Orientation:** tilt all four directions and confirm shared gravity remains causally understandable.
+9. **Perimeter:** all 28 edge LEDs remain available to content; no containment frame may return.
+10. **Limiter/timing:** collect normal runtime rates, work counters and requested/applied/load telemetry across scenes.
+11. **Soak:** retain the existing 30–60 minute-or-longer multi-scene soak before altering the provisional 32/255 brightness ceiling or 4096-unit load envelope.
 
 Do not infer electrical/thermal safety from software load units or a short visual check.
 
 ## Serial evidence
 
-Common runtime telemetry remains scene/seed/tick/hash, measured IMU/simulation/render rates, timing maxima, normalized motion and limiter state.
+Common telemetry remains scene/seed/tick/hash, measured IMU/simulation/render rates, timing maxima, normalized motion and limiter state. Chemistry/ecology scene lines remain available for reaction and lifecycle evidence.
 
-ES-009 adds a Moss line such as:
-
-```text
-scene.moss_garden water=... moss=... mites=... growth_energy=... grow=... reinforce=... mite_move=... feed=... starved=... rain=... seed=... scatter=... event=used/limit/drop led=requested/applied load=... limited=...
-```
-
-Chemistry scene lines remain available for reaction/material lifecycle evidence.
-
-Telemetry is evidence plumbing, not physical evidence by itself.
+Renderer blockiness tests do not require new runtime telemetry because their invariants are pure deterministic projection properties.
 
 ## PR checklist
 
@@ -100,4 +103,4 @@ Every implementation PR records linked issue, implementation/architecture change
 
 ## Merge rule
 
-Autonomous issue work may merge only after required automated checks pass on the exact final head and any non-deferrable acceptance gate is satisfied. Hardware-only/readability observations may remain explicit post-merge validation items when the issue permits remote completion.
+Autonomous work may merge only after required automated checks pass on the exact final head and any non-deferrable acceptance gate is satisfied. Hardware-only/readability observations may remain explicit post-merge validation items when the issue permits remote completion.
