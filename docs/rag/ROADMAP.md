@@ -67,11 +67,11 @@ Current baseline therefore establishes:
 - sparse starts for all four scenes;
 - slower/cap-aware autonomous replenishment and Moss growth;
 - 720-tick host regression checking every material after every tick;
-- pinch-slider redefined as direct spatial **secondary-material/actor** control:
+- pinch-slider redefined as direct spatial **secondary-material/event** control:
   - Lava -> water;
   - Sodium -> water;
   - Oil -> local ignition/fire;
-  - Moss -> mite;
+  - Moss -> water/rain;
 - direct slider actions occur after the current physics pass so the touched state is visible near selected X before the next physics tick;
 - Moss begins with one autonomous mite instead of pre-populating more agents;
 - Beauty ordinary output recentered into **0..127**, visually centred around ~63;
