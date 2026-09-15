@@ -279,7 +279,8 @@ SodiumWaterSceneStats SodiumWaterScene::before_dynamics(TickContext context) con
   return stats;
 }
 
-void SodiumWaterScene::after_dynamics(TickContext context, SodiumWaterSceneStats& stats) const noexcept {
+void SodiumWaterScene::after_dynamics(TickContext context,
+                                      SodiumWaterSceneStats& stats) const noexcept {
   const bool slider_injection = context.input.slider_active &&
                                 context.input.slider_strength >= 0.35F &&
                                 context.tick % kTouchInjectionPeriodTicks == 0U;
