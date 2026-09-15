@@ -98,8 +98,7 @@ void add_moss_garden_stats(StableHasher& hasher, const MossGardenSceneStats& sta
   hasher.add_u16(stats.scatter_events);
 }
 
-void add_moss_garden_state(StableHasher& hasher,
-                           const MossGardenStateSnapshot& state) noexcept {
+void add_moss_garden_state(StableHasher& hasher, const MossGardenStateSnapshot& state) noexcept {
   hasher.add_u8(state.mite_count);
   hasher.add_u16(state.growth_energy);
   for (const MiteState& mite : state.mites) {
