@@ -22,12 +22,14 @@ constexpr std::uint8_t kOilMass = 208;
 constexpr std::int16_t kSodiumTemperature = 100;
 constexpr std::int16_t kWaterTemperature = 20;
 constexpr std::int16_t kOilTemperature = 28;
+// clang-format off
 constexpr std::array<int, kWorldWidth> kSodiumWaterSurface{{
     13, 12, 14, 11, 13, 10, 12, 11, 13, 10, 12, 11, 14, 12, 13, 11,
 }};
 constexpr std::array<int, kWorldWidth> kOilWaterSurface{{
     15, 14, 15, 13, 14, 13, 15, 14, 15, 13, 14, 13, 15, 14, 15, 14,
 }};
+// clang-format on
 
 Cell material_cell(MaterialId material, std::uint8_t mass, std::int16_t temperature = 0,
                    std::uint8_t aux = 0) noexcept {
@@ -208,9 +210,11 @@ void SodiumWaterScene::initialize(World& world, Pcg32& prng) const noexcept {
   }
 
   const Cell sodium = material_cell(MaterialId::kSodiumLike, kSodiumMass, kSodiumTemperature);
+  // clang-format off
   constexpr std::array<std::array<int, 2>, 4> kDrops{{
       {{3, 1}}, {{11, 3}}, {{6, 5}}, {{13, 6}},
   }};
+  // clang-format on
   for (const auto& point : kDrops) {
     static_cast<void>(world.set_cell(point[0], point[1], sodium));
   }
@@ -269,13 +273,13 @@ void OilFireScene::initialize(World& world, Pcg32& prng) const noexcept {
     const int water_surface = kOilWaterSurface[static_cast<std::size_t>(x)];
     if (x % 4 != 1) {
       const std::uint8_t mass = static_cast<std::uint8_t>(158U + (x % 3) * 18U);
-      static_cast<void>(world.set_cell(
-          x, water_surface - 1, material_cell(MaterialId::kOil, mass, kOilTemperature)));
+      const Cell oil = material_cell(MaterialId::kOil, mass, kOilTemperature);
+      static_cast<void>(world.set_cell(x, water_surface - 1, oil));
     }
     if (x % 3 == 0 || x % 5 == 0) {
       const std::uint8_t mass = static_cast<std::uint8_t>(142U + (x % 2) * 24U);
-      static_cast<void>(world.set_cell(
-          x, water_surface - 2, material_cell(MaterialId::kOil, mass, kOilTemperature)));
+      const Cell oil = material_cell(MaterialId::kOil, mass, kOilTemperature);
+      static_cast<void>(world.set_cell(x, water_surface - 2, oil));
     }
   }
 
