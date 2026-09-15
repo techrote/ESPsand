@@ -108,6 +108,7 @@ void scale_color_q8(LinearRgb& color, std::uint16_t scale_q8) noexcept {
   color.b = (color.b * scale_q8 + 128U) / 256U;
 }
 
+// clang-format off
 std::uint16_t coverage_scale_q8(std::uint8_t occupied_samples) noexcept {
   // A partially occupied logical 2x2 block must not project as a fully filled physical LED.
   // Keep thin one-cell structures visible while preserving a clear difference between 1/4 and 4/4 fill.
@@ -209,6 +210,7 @@ std::uint16_t structural_scale_q8(const sim::World& world, std::size_t out_x,
   return static_cast<std::uint16_t>(
       std::min<std::uint16_t>(292U, kGrainScale[phase] + edge_bonus + motion_bonus));
 }
+// clang-format on
 
 std::uint8_t tone_map(std::uint32_t linear, std::uint16_t exposure_q8) noexcept {
   const std::uint64_t scaled = (static_cast<std::uint64_t>(linear) * exposure_q8 + 128U) / 256U;
