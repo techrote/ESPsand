@@ -11,7 +11,7 @@
 
 namespace espsand::sim {
 
-inline constexpr std::uint32_t kMossGardenSceneSchemaVersion = 1;
+inline constexpr std::uint32_t kMossGardenSceneSchemaVersion = 2;
 inline constexpr std::size_t kMaxMites = 3;
 inline constexpr std::uint8_t kMossShootFlag = 0x01U;
 
@@ -36,6 +36,7 @@ struct MossGardenSceneStats {
   std::uint16_t starved = 0;
   std::uint16_t rain_pulses = 0;
   std::uint16_t seed_pulses = 0;
+  std::uint16_t touch_mite_spawns = 0;
   std::uint16_t scatter_events = 0;
 };
 
