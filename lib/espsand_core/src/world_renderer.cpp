@@ -117,13 +117,17 @@ io::Rgb tone_map(const LinearRgb& color, std::uint16_t exposure_q8) noexcept {
           tone_map(color.b, exposure_q8)};
 }
 
+std::uint32_t temperature_magnitude(std::int16_t temperature) noexcept {
+  const std::int32_t value = temperature;
+  return static_cast<std::uint32_t>(value < 0 ? -value : value);
+}
+
 LinearRgb temperature_color(std::int16_t temperature) noexcept {
   if (temperature == 0) {
     return {};
   }
   if (temperature < 0) {
-    const std::uint32_t magnitude = std::min<std::uint32_t>(
-        static_cast<std::uint32_t>(-static_cast<std::int32_t>(temperature)), 2048U);
+    const std::uint32_t magnitude = std::min<std::uint32_t>(temperature_magnitude(temperature), 2048U);
     return {0, magnitude / 3U, magnitude + 400U};
   }
   const std::uint32_t heat = std::min<std::uint32_t>(temperature, 2048U);
@@ -146,7 +150,7 @@ RenderResult WorldRenderer::render(const sim::World& world, const RenderConfig& 
       std::uint32_t accent_mass = 0;
       const sim::Cell* diagnostic_cell = nullptr;
       std::uint8_t diagnostic_mass = 0;
-      std::int16_t maximum_temperature = 0;
+      std::int16_t diagnostic_temperature = 0;
       std::uint32_t block_mass = 0;
 
       for (std::size_t local_y = 0; local_y < 2U; ++local_y) {
@@ -168,8 +172,9 @@ RenderResult WorldRenderer::render(const sim::World& world, const RenderConfig& 
             diagnostic_cell = cell;
             diagnostic_mass = cell->mass;
           }
-          if (cell->temperature > maximum_temperature) {
-            maximum_temperature = cell->temperature;
+          if (temperature_magnitude(cell->temperature) >
+              temperature_magnitude(diagnostic_temperature)) {
+            diagnostic_temperature = cell->temperature;
           }
 
           if (cell->material == sim::MaterialId::kEmpty || cell->mass == 0U) {
@@ -203,7 +208,7 @@ RenderResult WorldRenderer::render(const sim::World& world, const RenderConfig& 
 
       if (config.mode == RenderMode::kTemperature) {
         result.frame[output_index] =
-            tone_map(temperature_color(maximum_temperature), config.exposure_q8);
+            tone_map(temperature_color(diagnostic_temperature), config.exposure_q8);
         continue;
       }
 
