@@ -231,14 +231,6 @@ LavaWaterSceneStats LavaWaterScene::before_dynamics(LavaWaterTickContext context
     }
   }
 
-  const bool slider_due = input.slider_active && input.slider_strength >= 0.35F &&
-                          context.tick % kTouchWaterPeriodTicks == 0U;
-  if (slider_due && event_budget.try_consume()) {
-    if (inject_touch_water(world, input.slider_position, stats.last_injection_x)) {
-      ++stats.touch_water_injections;
-    }
-  }
-
   if (input.cap_combo_event && event_budget.try_consume()) {
     if (inject_reaction_pair(world, prng)) {
       ++stats.burst_pairs;
@@ -258,6 +250,16 @@ LavaWaterSceneStats LavaWaterScene::before_dynamics(LavaWaterTickContext context
   }
 
   return stats;
+}
+
+void LavaWaterScene::after_dynamics(LavaWaterTickContext context,
+                                    LavaWaterSceneStats& stats) const noexcept {
+  const bool slider_due = context.input.slider_active && context.input.slider_strength >= 0.35F &&
+                          context.tick % kTouchWaterPeriodTicks == 0U;
+  if (slider_due && context.event_budget.try_consume() &&
+      inject_touch_water(context.world, context.input.slider_position, stats.last_injection_x)) {
+    ++stats.touch_water_injections;
+  }
 }
 
 } // namespace espsand::sim
